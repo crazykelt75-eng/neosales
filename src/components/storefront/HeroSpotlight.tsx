@@ -9,9 +9,6 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  MapPin,
-  BadgeCheck,
-  Quote,
   Pause,
   Play,
 } from 'lucide-react';
@@ -175,20 +172,11 @@ export function HeroSpotlight() {
               isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
             }`}
           >
-            {/* Top badges */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 bg-orangeMoney/20 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold text-orangeMoney border border-orangeMoney/30 shadow-glow-orange">
-                <Sparkles size={13} aria-hidden="true" />
-                New Arrival
-              </span>
-              {slide.product.featuredTag && (
-                <span className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold text-neutral-200 border border-white/15">
-                  {slide.product.featuredTag}
-                </span>
-              )}
-              <span className="inline-flex items-center gap-1 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold text-neutral-300 border border-white/10">
-                <MapPin size={11} className="text-orangeMoney" aria-hidden="true" />
-                Francistown & Tati Siding
+            {/* Top badge - single, clean badge */}
+            <div>
+              <span className="inline-flex items-center gap-1.5 bg-orangeMoney/15 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-orangeMoney border border-orangeMoney/25">
+                <Sparkles size={12} aria-hidden="true" />
+                {slide.product.featuredTag || 'New Arrival'}
               </span>
             </div>
 
@@ -197,91 +185,54 @@ export function HeroSpotlight() {
               {slide.product.title}
             </h2>
 
-            {/* Mobile Product Visual Preview (visible on small/tablet screens) */}
-            <div className="block lg:hidden w-full relative rounded-2xl overflow-hidden aspect-[16/9] sm:aspect-[2/1] border border-white/10 shadow-elevated my-2">
+            {/* Price & Rating - unified, clean row */}
+            <div className="flex items-center gap-4">
+              <span className="text-2xl sm:text-3xl font-black text-white font-mono">
+                P{slide.product.basePriceBWP}
+              </span>
+              <span className="h-4 w-px bg-white/20" aria-hidden="true" />
+              <div className="flex items-center gap-1.5">
+                <StarRating rating={Math.round(slide.averageRating)} size={13} />
+                <span className="text-xs font-bold text-white">{slide.averageRating}</span>
+                <span className="text-xs text-neutral-400">({slide.reviewCount})</span>
+              </div>
+            </div>
+
+            {/* Mobile Product Visual Preview */}
+            <div className="block lg:hidden w-full relative rounded-2xl overflow-hidden aspect-[16/9] sm:aspect-[2/1] border border-white/10 shadow-elevated my-1">
               <img
                 src={slide.product.imageUrls[0]}
                 alt={slide.product.title}
                 className="w-full h-full object-cover"
                 loading="eager"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-transparent" />
-              <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
-                <span className="text-[10px] font-bold bg-neutral-950/80 backdrop-blur-sm px-2.5 py-1 rounded-lg text-neutral-200 border border-white/10">
-                  {slide.product.variants.reduce((s, v) => s + v.stockQuantity, 0)} in stock
-                </span>
-                <span className="text-[10px] font-bold bg-orangeMoney px-2.5 py-1 rounded-lg text-white">
-                  From P{slide.product.basePriceBWP}
-                </span>
-              </div>
             </div>
 
-            {/* Rating summary */}
-            <div className="flex items-center gap-3">
-              <StarRating rating={Math.round(slide.averageRating)} />
-              <span className="text-sm font-bold text-white">{slide.averageRating}</span>
-              <span className="text-xs text-neutral-400">
-                ({slide.reviewCount} verified {slide.reviewCount === 1 ? 'review' : 'reviews'})
-              </span>
-            </div>
-
-            {/* Price */}
-            <div className="flex items-baseline gap-2">
-              <span className="text-xs text-neutral-400 font-medium uppercase tracking-wider">From</span>
-              <span className="text-2xl sm:text-3xl font-black text-white font-mono">
-                P{slide.product.basePriceBWP.toFixed(0)}
-              </span>
-              <span className="text-xs text-neutral-400">.00 BWP</span>
-            </div>
-
-            {/* Featured Customer Review Card */}
-            <div className="bg-white/[0.07] backdrop-blur-md border border-white/10 rounded-2xl p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-orangeMoney/20 border border-orangeMoney/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Quote size={14} className="text-orangeMoney" aria-hidden="true" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-neutral-200 leading-relaxed line-clamp-3 italic">
-                    &ldquo;{featuredReview.comment}&rdquo;
-                  </p>
-                  <div className="flex items-center gap-2.5 mt-2.5">
-                    <div className="flex items-center gap-1">
-                      <StarRating rating={featuredReview.rating} size={11} />
-                    </div>
-                    <span className="w-px h-3 bg-white/20" aria-hidden="true" />
-                    <span className="text-xs font-bold text-neutral-200">
-                      {featuredReview.customerName}
-                    </span>
-                    <span className="text-[10px] text-neutral-400">{featuredReview.town}</span>
-                    {featuredReview.verified && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400 font-bold">
-                        <BadgeCheck size={11} aria-hidden="true" />
-                        Verified
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+            {/* Customer Review - Minimalist & Elegant */}
+            <div className="border-l-2 border-orangeMoney/60 pl-3.5 py-0.5">
+              <p className="text-xs sm:text-sm text-neutral-300 italic leading-relaxed line-clamp-2">
+                &ldquo;{featuredReview.comment}&rdquo;
+              </p>
+              <p className="text-[11px] text-neutral-400 font-medium mt-1">
+                — {featuredReview.customerName} · Verified Buyer
+              </p>
             </div>
 
             {/* CTA Button */}
-            <div className="flex items-center gap-3 pt-1">
+            <div className="pt-1">
               <Button
                 variant="primary"
                 size="lg"
                 onClick={() => setSelectedProductForModal(slide.product)}
                 rightIcon={<ArrowRight size={18} aria-hidden="true" />}
-                className="shadow-glow-orange"
+                className="shadow-glow-orange font-bold px-7"
               >
                 Shop Now
               </Button>
-              <span className="text-[11px] text-neutral-400 hidden sm:block">
-                {slide.product.variants.filter((v) => v.stockQuantity > 0).length} variants in stock
-              </span>
             </div>
           </div>
 
-          {/* Right: Product Image (visible on larger screens) */}
+          {/* Right: Clean Product Photography without Clutter Stickers */}
           <div
             className={`hidden lg:block relative w-72 xl:w-80 flex-shrink-0 transition-all duration-500 ${
               isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
@@ -293,32 +244,21 @@ export function HeroSpotlight() {
                 alt={slide.product.title}
                 className="w-full h-full object-cover transition-transform duration-700 group-hover/img:scale-105"
               />
-              {/* Overlay gradient at bottom */}
-              <div className="absolute bottom-0 inset-x-0 h-1/3 bg-gradient-to-t from-neutral-950/80 to-transparent" />
-              {/* Stock badge */}
-              <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                <span className="text-[10px] font-bold bg-neutral-950/70 backdrop-blur-sm px-2.5 py-1 rounded-lg text-neutral-200 border border-white/10">
-                  {slide.product.variants.reduce((s, v) => s + v.stockQuantity, 0)} units in stock
-                </span>
-                <span className="text-[10px] font-bold bg-orangeMoney/90 px-2.5 py-1 rounded-lg text-white">
-                  From P{slide.product.basePriceBWP}
-                </span>
-              </div>
             </div>
           </div>
         </div>
 
-        {/* Bottom: Reassurance pills + Dot navigation */}
+        {/* Bottom: Streamlined reassurance + navigation */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-6 pt-5 border-t border-white/10">
-          {/* Reassurance pills */}
-          <div className="flex flex-wrap gap-2">
-            <span className="text-[11px] sm:text-xs bg-white/[0.07] backdrop-blur-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-neutral-300 border border-white/10">
+          <div className="flex flex-wrap items-center gap-2.5 text-xs text-neutral-300">
+            <span className="flex items-center gap-1.5">
               <Truck size={13} className="text-orangeMoney" aria-hidden="true" />
-              Free Francistown & Tati Siding Pickups
+              Free Francistown Pickups
             </span>
-            <span className="text-[11px] sm:text-xs bg-white/[0.07] backdrop-blur-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-neutral-300 border border-white/10">
+            <span className="text-white/20">•</span>
+            <span className="flex items-center gap-1.5">
               <ShieldCheck size={13} className="text-emerald-400" aria-hidden="true" />
-              Instant Mobile Money Verification
+              Orange Money & FNB Pay2Cell
             </span>
           </div>
 

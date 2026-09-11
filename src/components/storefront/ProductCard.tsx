@@ -74,40 +74,26 @@ export function ProductCard({ product }: Props) {
           </div>
         )}
 
-        {/* Floating Top Badges */}
-        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start z-20 pointer-events-none">
-          {product.isNewArrival && (
-            <Badge variant="new">NEW</Badge>
-          )}
-          {product.featuredTag && (
-            <span className="bg-amber-500/20 backdrop-blur-md text-amber-200 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
-              {product.featuredTag}
-            </span>
-          )}
-        </div>
-
-        {/* Stock Status Badge */}
-        <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none">
+        {/* Priority Badge (single clean badge) */}
+        <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
           {isSoldOut ? (
             <Badge variant="soldOut">Sold Out</Badge>
           ) : isLowStock ? (
             <Badge variant="lowStock" pulse>
               Only {totalStock} Left
             </Badge>
+          ) : product.isNewArrival ? (
+            <Badge variant="new">NEW</Badge>
+          ) : product.featuredTag ? (
+            <span className="bg-amber-500/20 backdrop-blur-md text-amber-200 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
+              {product.featuredTag}
+            </span>
           ) : null}
-        </div>
-
-        {/* Floating Category Pill */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 pointer-events-none bg-[#0a0c12]/85 backdrop-blur-md px-2.5 py-1 rounded-xl text-[11px] text-neutral-200 font-semibold flex items-center justify-between border border-white/10 shadow-xs">
-          <span className="capitalize">{product.category}</span>
-          <span className="text-neutral-400 font-normal">
-            {product.variants.length} {product.category === 'perfumes' ? 'volumes' : 'options'}
-          </span>
         </div>
       </div>
 
       {/* Product Information */}
-      <div className="p-3.5 sm:p-4 flex flex-col flex-1 justify-between gap-3">
+      <div className="p-3.5 sm:p-4 flex flex-col flex-1 justify-between gap-2.5">
         <div>
           <h3 className="font-bold text-white text-sm sm:text-base leading-snug line-clamp-2 group-hover:text-amber-400 transition-colors">
             {product.title}
@@ -118,22 +104,17 @@ export function ProductCard({ product }: Props) {
         </div>
 
         {/* Price & Action Row */}
-        <div className="pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-neutral-400 block tracking-wider">
-              Botswana Pula
-            </span>
-            <span className="text-base sm:text-lg font-black text-white tracking-tight font-mono">
-              P{minPrice}
-              {maxPrice > minPrice && (
-                <span className="text-xs font-semibold text-neutral-400"> - P{maxPrice}</span>
-              )}
-            </span>
+        <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="text-base sm:text-lg font-black text-white tracking-tight font-mono">
+            P{minPrice}
+            {maxPrice > minPrice && (
+              <span className="text-xs font-semibold text-neutral-400"> - P{maxPrice}</span>
+            )}
           </div>
 
           <span
             aria-hidden="true"
-            className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
+            className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
               isSoldOut
                 ? 'bg-white/[0.04] text-neutral-400 border border-white/5 cursor-not-allowed'
                 : 'bg-white/[0.08] hover:bg-orangeMoney text-white border border-white/15 group-hover:bg-gradient-to-r group-hover:from-orangeMoney group-hover:to-orangeMoney-dark group-hover:border-orangeMoney group-hover:shadow-glow-orange'

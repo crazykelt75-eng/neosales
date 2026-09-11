@@ -115,9 +115,9 @@ git push -u origin main
    - **Build output directory:** `out`
 4. Add Environment Variables in the Cloudflare Pages settings:
    - `NEXT_PUBLIC_STORE_NAME`: `NeoSales`
-   - `NEXT_PUBLIC_SELLER_WHATSAPP`: `+26772123456`
-   - `NEXT_PUBLIC_ORANGE_MONEY_NUMBER`: `72123456`
-   - `NEXT_PUBLIC_FNB_PAY2CELL_NUMBER`: `74123456`
+   - `NEXT_PUBLIC_SELLER_WHATSAPP`: `+26771550200`
+   - `NEXT_PUBLIC_ORANGE_MONEY_NUMBER`: `74453342`
+   - `NEXT_PUBLIC_FNB_PAY2CELL_NUMBER`: `71550200`
    - `NEXT_PUBLIC_FNB_ACCOUNT_NAME`: `NeoSales Retail`
    - `NEXT_PUBLIC_SUPABASE_URL`: (Your Supabase Project URL)
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: (Your Supabase Anon Key)

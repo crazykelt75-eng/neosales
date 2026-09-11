@@ -98,9 +98,9 @@ CREATE TABLE IF NOT EXISTS seller_configs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_name VARCHAR(64) NOT NULL DEFAULT 'NeoSales',
     hub_location VARCHAR(128) NOT NULL DEFAULT 'Francistown & Tati Siding',
-    seller_whatsapp VARCHAR(20) NOT NULL DEFAULT '+26772123456',
-    orange_money_number VARCHAR(20) NOT NULL DEFAULT '72123456',
-    fnb_pay2cell_number VARCHAR(20) NOT NULL DEFAULT '74123456',
+    seller_whatsapp VARCHAR(20) NOT NULL DEFAULT '+26771550200',
+    orange_money_number VARCHAR(20) NOT NULL DEFAULT '74453342',
+    fnb_pay2cell_number VARCHAR(20) NOT NULL DEFAULT '71550200',
     fnb_account_name VARCHAR(64) NOT NULL DEFAULT 'NeoSales Retail',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -228,7 +228,7 @@ CREATE POLICY "Seller all access order_items" ON order_items FOR ALL USING (auth
 
 -- Initial Seller Configuration
 INSERT INTO seller_configs (store_name, hub_location, seller_whatsapp, orange_money_number, fnb_pay2cell_number, fnb_account_name)
-VALUES ('NeoSales', 'Francistown & Tati Siding', '+26772123456', '72123456', '74123456', 'NeoSales Retail')
+VALUES ('NeoSales', 'Francistown & Tati Siding', '+26771550200', '74453342', '71550200', 'NeoSales Retail')
 ON CONFLICT DO NOTHING;
 
 -- Seed Products

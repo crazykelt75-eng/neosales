@@ -49,7 +49,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, { name: string; subtit
  */
 export function generateWhatsAppOrderLink(
   order: Order,
-  sellerPhone: string = process.env.NEXT_PUBLIC_SELLER_WHATSAPP || '+26772000000'
+  sellerPhone: string = process.env.NEXT_PUBLIC_SELLER_WHATSAPP || '+26771550200'
 ): string {
   const normalizedSellerPhone = formatBotswanaPhone(sellerPhone);
   const deliveryInfo = DELIVERY_OPTIONS_LABELS[order.customer.deliveryPreference];

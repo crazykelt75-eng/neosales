@@ -66,9 +66,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sellerConfig = {
     storeName: process.env.NEXT_PUBLIC_STORE_NAME || 'NeoSales',
     hubLocation: 'Francistown & Tati Siding',
-    sellerWhatsApp: process.env.NEXT_PUBLIC_SELLER_WHATSAPP || '+26772123456',
-    orangeMoneyNumber: process.env.NEXT_PUBLIC_ORANGE_MONEY_NUMBER || '72123456',
-    fnbPay2CellNumber: process.env.NEXT_PUBLIC_FNB_PAY2CELL_NUMBER || '74123456',
+    sellerWhatsApp: process.env.NEXT_PUBLIC_SELLER_WHATSAPP || '+26771550200',
+    orangeMoneyNumber: process.env.NEXT_PUBLIC_ORANGE_MONEY_NUMBER || '74453342',
+    fnbPay2CellNumber: process.env.NEXT_PUBLIC_FNB_PAY2CELL_NUMBER || '71550200',
     fnbAccountName: process.env.NEXT_PUBLIC_FNB_ACCOUNT_NAME || 'NeoSales Retail',
   };
 

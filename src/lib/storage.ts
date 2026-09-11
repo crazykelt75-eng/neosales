@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   adminSession: 'neosales.admin.session',
   adminAttempts: 'neosales.admin.attempts',
   checkoutDraft: 'neosales.checkout.draft',
+  lastBackup: 'neosales.lastBackup',
 } as const;
 
 function getStore(kind: 'local' | 'session'): Storage | null {

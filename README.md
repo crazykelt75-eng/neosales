@@ -37,13 +37,20 @@ Everything is priced in **Botswana Pula (BWP)** and rendered as `P280`, `P460`, 
 | FNB Pay2Cell | Recipient cell number and app/USSD steps with copy-to-clipboard |
 | Cash on Pickup | Available **only** for Francistown pickups |
 
+### Data safety & order corrections (Tier 0)
+
+- **Export & backup** — an orders ledger CSV (totals in Pula, payment rail + transaction reference) and a stock sheet CSV for Excel, plus a full restorable `neosales-backup-*.json` covering the catalog and every order. A reminder banner tracks when you last exported and nudges you weekly.
+- **Restore with validation** — uploaded backups are structurally checked (app tag, version, product/order shape) before anything is replaced, and the panel previews exactly what will be restored, with warnings for any rows that had to be skipped.
+- **Cancel with automatic stock return** — cancelling an order releases every reserved unit back to the shelf, records a reason and moves the order to a cancelled ledger beneath the board. **Reopen order** reverses an accidental cancellation and re-reserves the stock, warning you if inventory is now short.
+- **Payment reference capture** — the mobile money transaction ID can be pasted by the customer on the order-confirmation screen or typed by the seller on the order card. It is stored on the order, included in the WhatsApp receipt and exported in the ledger for reconciliation.
+
 ### Seller operations hub (`/admin`)
 - **PIN gate** (`AdminAuthGate`): 4–6 digit PIN (default `2670`, override with `NEXT_PUBLIC_ADMIN_PIN`), session stored in `sessionStorage` so it clears when the tab closes, on-screen keypad for phone-first sellers, and rate limiting — 5 wrong attempts triggers a 60 second lockout with a live countdown.
 - **KPI cards**: Total revenue (Pula), pending payment orders, total stock on hand, low-stock alerts, plus a best-sellers strip.
-- **Order kanban**: columns for *Pending Verification → Payment Confirmed → Dispatched → Completed* with status filters, one-click transitions, a "move back" correction path, and a per-order **WhatsApp the customer** link with status-appropriate copy.
+- **Order kanban**: columns for *Pending Verification → Payment Confirmed → Dispatched → Completed* with status filters, one-click transitions, a "move back" correction path, a per-order **WhatsApp the customer** link with status-appropriate copy (including a cancellation notice), and a cancelled ledger that shows exactly how many units were returned.
 - **Live inventory manager**: search by SKU/title/size/colour, filter by stock level or category, inline `+ / − / +10` adjusters with direct numeric entry, and an instant published/hidden switch per product.
 - **Quick add product**: validated modal that publishes a new catalog item with its opening variant immediately.
-- **Reset local store data**: restores the demo catalog, bag and orders.
+- **Data & backup tab**: export/restore tooling, local-storage footprint, cloud-mirror status, and the reset action (now behind an explicit confirmation).
 
 ---
 

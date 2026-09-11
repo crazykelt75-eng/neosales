@@ -1,5 +1,4 @@
 import {
-  CartItem,
   Order,
   OrderCustomer,
   OrderStatus,
@@ -62,14 +61,24 @@ export function buildWhatsAppLink(recipientPhone: string, message: string): stri
   return `https://wa.me/${recipient}?text=${encodeURIComponent(message)}`;
 }
 
+/** Minimal line shape needed to render a receipt (satisfied by both bag lines and order lines). */
+export interface ReceiptLine {
+  productTitle: string;
+  variantLabel: string;
+  quantity: number;
+  unitPriceBWP: number;
+}
+
 interface ReceiptCartOptions {
-  items: CartItem[];
+  items: ReceiptLine[];
   orderNumber: string;
   customer: OrderCustomer;
   subtotalBWP: number;
   deliveryFeeBWP: number;
   totalAmountBWP: number;
   paymentMethod: PaymentMethod;
+  /** Mobile money transaction ID the customer quotes, when supplied. */
+  paymentReference?: string;
 }
 
 /**
@@ -83,7 +92,7 @@ export function buildOrderReceipt(options: ReceiptCartOptions): string {
   const itemLines = options.items
     .map(
       (item, index) =>
-        `${index + 1}. ${item.product.title}\n   ${item.variantLabel} × ${item.quantity} — ${formatBWP(
+        `${index + 1}. ${item.productTitle}\n   ${item.variantLabel} × ${item.quantity} — ${formatBWP(
           item.unitPriceBWP * item.quantity
         )}`
     )
@@ -94,7 +103,7 @@ export function buildOrderReceipt(options: ReceiptCartOptions): string {
       ? formatBWP(options.deliveryFeeBWP)
       : 'FREE (Francistown pickup)';
 
-  return [
+  const body = [
     `*NEW ORDER — ${SELLER_CONFIG.storeName}*`,
     `Reference: *${options.orderNumber}*`,
     '',
@@ -119,27 +128,25 @@ export function buildOrderReceipt(options: ReceiptCartOptions): string {
       ? `Recipient: ${payment.recipientNumber} (${payment.recipientName})`
       : 'Cash to be handed over at the pickup point',
     `Payment reference: *${options.orderNumber}*`,
+    options.paymentReference ? `Transaction ID: *${options.paymentReference}*` : '',
     '',
     'I am sending my payment confirmation screenshot right after this message. Ke a leboga!',
-  ].join('\n');
+  ];
+
+  return body.filter((line) => line !== '').join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /** WhatsApp dispatch link for a freshly created order (the 1-tap checkout CTA). */
 export function buildOrderWhatsAppLink(order: Order): string {
   const message = buildOrderReceipt({
-    items: order.items.map((item) => ({
-      product: { title: item.productTitle } as Product,
-      variantId: item.variantId,
-      variantLabel: item.variantLabel,
-      quantity: item.quantity,
-      unitPriceBWP: item.unitPriceBWP,
-    })),
+    items: order.items,
     orderNumber: order.orderNumber,
     customer: order.customer,
     subtotalBWP: order.subtotalBWP,
     deliveryFeeBWP: order.deliveryFeeBWP,
     totalAmountBWP: order.totalAmountBWP,
     paymentMethod: order.paymentMethod,
+    paymentReference: order.paymentReference,
   });
 
   return buildWhatsAppLink(SELLER_CONFIG.sellerWhatsApp, message);
@@ -171,6 +178,13 @@ export function buildStatusUpdateLink(order: Order, status: OrderStatus): string
       `Order *#${order.orderNumber}* is complete. Thank you for shopping local with ${SELLER_CONFIG.storeName}!`,
       'If anything is not perfect, reply here within 48 hours and we will sort it out.',
     ].join('\n'),
+    cancelled: [
+      `Dumelang ${firstName}, we are sorry to let you know that order *#${order.orderNumber}* has been cancelled.`,
+      order.cancelReason ? `Reason: ${order.cancelReason}.` : '',
+      'The reserved items are back in stock. Reply here if you would like to re-order or choose something else.',
+    ]
+      .filter(Boolean)
+      .join('\n'),
   };
 
   return buildWhatsAppLink(order.customer.phone, bodies[status]);

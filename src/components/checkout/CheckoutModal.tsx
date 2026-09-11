@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   MapPin,
   MessageCircle,
+  Receipt,
   ShieldCheck,
   Smartphone,
   Truck,
@@ -60,14 +61,23 @@ const PAYMENT_ICONS: Record<PaymentMethod, React.ReactNode> = {
  * account, no password, and every field validates inline with friendly copy.
  */
 export function CheckoutModal() {
-  const { isCheckoutOpen, closeCheckout, cart, cartSubtotal, createOrder, selectedDelivery, setSelectedDelivery } =
-    useStore();
+  const {
+    isCheckoutOpen,
+    closeCheckout,
+    cart,
+    cartSubtotal,
+    createOrder,
+    selectedDelivery,
+    setSelectedDelivery,
+    setOrderPaymentReference,
+  } = useStore();
 
   const [step, setStep] = useState<CheckoutStep>('details');
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [order, setOrder] = useState<Order | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [referenceDraft, setReferenceDraft] = useState('');
   const hasRestoredDraft = useRef(false);
 
   const deliveryOption =
@@ -104,15 +114,16 @@ export function CheckoutModal() {
   const receiptPreview = useMemo(() => {
     if (!order) return '';
     return buildOrderReceipt({
-      items: cart,
+      items: order.items,
       orderNumber: order.orderNumber,
       customer: order.customer,
       subtotalBWP: order.subtotalBWP,
       deliveryFeeBWP: order.deliveryFeeBWP,
       totalAmountBWP: order.totalAmountBWP,
       paymentMethod: order.paymentMethod,
+      paymentReference: order.paymentReference,
     });
-  }, [order, cart]);
+  }, [order]);
 
   if (!isCheckoutOpen) return null;
 
@@ -186,6 +197,7 @@ export function CheckoutModal() {
 
     const createdOrder = createOrder({ customer, paymentMethod: form.paymentMethod });
     setOrder(createdOrder);
+    setReferenceDraft('');
     setStep('success');
     setIsSubmitting(false);
     removeStorage(STORAGE_KEYS.checkoutDraft, 'session');
@@ -267,6 +279,51 @@ export function CheckoutModal() {
                 <Badge variant="amber">
                   {PAYMENT_OPTIONS.find((option) => option.id === order.paymentMethod)?.label}
                 </Badge>
+              </div>
+
+              {/* Already paid? Capture the transaction ID so the seller can verify instantly */}
+              <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+                <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-amber-100">
+                  <Receipt size={14} aria-hidden="true" />
+                  Already paid? Add your transaction ID
+                </h4>
+                <p className="mt-1.5 text-xs leading-relaxed text-neutral-300">
+                  Paste the reference from your Orange Money or FNB SMS and it travels with your order — the seller can
+                  verify it without waiting for a screenshot.
+                </p>
+
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <label className="sr-only" htmlFor="payment-reference">
+                    Mobile money transaction ID for order {order.orderNumber}
+                  </label>
+                  <input
+                    id="payment-reference"
+                    value={referenceDraft}
+                    onChange={(event) => setReferenceDraft(event.target.value)}
+                    placeholder="e.g. OM-984102 or PP240911.1234.C56789"
+                    className="min-w-0 flex-1 rounded-xl border border-white/12 bg-black/30 px-3.5 py-3 font-mono text-xs text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    disabled={!referenceDraft.trim()}
+                    onClick={() => {
+                      setOrderPaymentReference(order.id, referenceDraft);
+                      setOrder((current) =>
+                        current ? { ...current, paymentReference: referenceDraft.trim() } : current
+                      );
+                    }}
+                  >
+                    Save reference
+                  </Button>
+                </div>
+
+                {order.paymentReference && (
+                  <p className="mt-2 flex items-center gap-1.5 text-2xs font-semibold text-emerald-300">
+                    <CheckCircle2 size={13} aria-hidden="true" />
+                    Saved: <span className="font-mono">{order.paymentReference}</span>
+                  </p>
+                )}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">

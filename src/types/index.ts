@@ -20,12 +20,17 @@ export type DeliveryPreference =
 /** Botswana mobile-money / cash rails supported by the seller. */
 export type PaymentMethod = 'orange_money' | 'fnb_pay2cell' | 'cash_on_pickup';
 
-/** Lifecycle of an order inside the seller operations dashboard. */
+/**
+ * Lifecycle of an order inside the seller operations dashboard.
+ * `cancelled` is terminal and sits outside the four workflow columns: reserved
+ * stock is returned to the catalog the moment an order is cancelled.
+ */
 export type OrderStatus =
   | 'pending_verification'
   | 'payment_confirmed'
   | 'dispatched'
-  | 'completed';
+  | 'completed'
+  | 'cancelled';
 
 /** A sellable configuration of a product (perfume volume, garment size/colour, etc). */
 export interface ProductVariant {
@@ -113,8 +118,14 @@ export interface Order {
   createdAt: string;
   /** ISO timestamp of seller payment verification, when available. */
   verifiedAt?: string;
+  /** Mobile money / Pay2Cell transaction ID quoted by the customer or read off the SMS. */
+  paymentReference?: string;
   /** Free-text note from the seller during verification (e.g. wallet reference). */
   verificationNotes?: string;
+  /** ISO timestamp recorded when the order was cancelled. */
+  cancelledAt?: string;
+  /** Why the order was cancelled — drives follow-up and stock decisions. */
+  cancelReason?: string;
 }
 
 /** Verified buyer feedback surfaced in the hero spotlight and product cards. */
@@ -180,6 +191,7 @@ export interface StoreMetrics {
   totalOrders: number;
   pendingVerificationCount: number;
   dispatchedCount: number;
+  cancelledCount: number;
   totalStockUnits: number;
   lowStockVariantCount: number;
   lowStockVariants: {
@@ -192,8 +204,23 @@ export interface StoreMetrics {
   bestSellers: { label: string; units: number }[];
 }
 
+/**
+ * Portable snapshot of everything the seller owns, used by the admin
+ * export/restore tools. Bumped whenever the payload shape changes.
+ */
+export interface StoreBackup {
+  app: 'neosales';
+  version: number;
+  exportedAt: string;
+  products: Product[];
+  orders: Order[];
+}
+
+/** Workflow statuses that appear as kanban columns (cancellations sit outside the board). */
+export type WorkflowStatus = Exclude<OrderStatus, 'cancelled'>;
+
 /** Ordered workflow columns rendered by the admin kanban. */
-export const ORDER_STATUS_ORDER: OrderStatus[] = [
+export const ORDER_STATUS_ORDER: WorkflowStatus[] = [
   'pending_verification',
   'payment_confirmed',
   'dispatched',

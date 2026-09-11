@@ -19,6 +19,7 @@ import {
   PaymentMethod,
   Product,
   ProductVariant,
+  StoreBackup,
   StoreMetrics,
 } from '@/types';
 import { CUSTOMER_REVIEWS, INITIAL_ORDERS, INITIAL_PRODUCTS } from '@/lib/mockData';
@@ -73,6 +74,9 @@ interface StoreContextValue {
   orders: Order[];
   createOrder: (input: CheckoutInput) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus, notes?: string) => void;
+  setOrderPaymentReference: (orderId: string, reference: string) => void;
+  cancelOrder: (orderId: string, reason?: string) => void;
+  reopenOrder: (orderId: string) => void;
   selectedDelivery: DeliveryPreference;
   setSelectedDelivery: (preference: DeliveryPreference) => void;
 
@@ -82,6 +86,9 @@ interface StoreContextValue {
   adjustVariantStock: (productId: string, variantId: string, delta: number) => void;
   toggleProductActive: (productId: string) => void;
   resetDemoData: () => void;
+
+  // Backup & restore
+  importBackup: (backup: StoreBackup) => void;
 
   // Admin session
   isAdminUnlocked: boolean;
@@ -583,6 +590,145 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [commitOrders, showToast]
   );
 
+  /** Attaches the mobile money transaction ID to an order (customer or seller). */
+  const setOrderPaymentReference = useCallback(
+    (orderId: string, reference: string) => {
+      let updatedOrder: Order | undefined;
+
+      const next = ordersRef.current.map((order) => {
+        if (order.id !== orderId) return order;
+        updatedOrder = { ...order, paymentReference: reference.trim() };
+        return updatedOrder;
+      });
+
+      if (!updatedOrder) return;
+
+      commitOrders(next);
+      void syncOrderStatus(updatedOrder);
+
+      if (reference.trim()) {
+        showToast({
+          type: 'success',
+          title: `Reference saved on ${updatedOrder.orderNumber}`,
+          description: reference.trim(),
+        });
+      }
+    },
+    [commitOrders, showToast]
+  );
+
+  /**
+   * Cancels an order and returns every reserved unit to the catalog, so
+   * abandoned or unpaid orders never lock up sellable stock.
+   */
+  const cancelOrder = useCallback(
+    (orderId: string, reason?: string) => {
+      const target = ordersRef.current.find((order) => order.id === orderId);
+      if (!target) return;
+
+      if (target.status === 'cancelled') {
+        showToast({ type: 'info', title: `Order ${target.orderNumber} is already cancelled` });
+        return;
+      }
+
+      const cancelledOrder: Order = {
+        ...target,
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancelReason: reason?.trim() ? reason.trim() : 'Cancelled by seller',
+      };
+
+      commitOrders(ordersRef.current.map((order) => (order.id === orderId ? cancelledOrder : order)));
+      void syncOrderStatus(cancelledOrder);
+
+      // Return the reserved units to the shelf.
+      const returnedUnits = target.items.reduce((sum, item) => sum + item.quantity, 0);
+      applyStockDelta((variant) => {
+        const line = target.items.find((item) => item.variantId === variant.id);
+        if (!line) return null;
+        return { ...variant, stockQuantity: variant.stockQuantity + line.quantity };
+      });
+
+      showToast({
+        type: 'info',
+        title: `Order ${target.orderNumber} cancelled`,
+        description: `${returnedUnits} unit${returnedUnits === 1 ? '' : 's'} returned to stock.`,
+      });
+    },
+    [applyStockDelta, commitOrders, showToast]
+  );
+
+  /**
+   * Reverses an accidental cancellation: the order re-enters verification and
+   * the reserved units are taken off the shelf again.
+   */
+  const reopenOrder = useCallback(
+    (orderId: string) => {
+      const target = ordersRef.current.find((order) => order.id === orderId);
+      if (!target || target.status !== 'cancelled') return;
+
+      const reopened: Order = {
+        ...target,
+        status: 'pending_verification',
+        cancelledAt: undefined,
+        cancelReason: undefined,
+      };
+
+      commitOrders(ordersRef.current.map((order) => (order.id === orderId ? reopened : order)));
+      void syncOrderStatus(reopened);
+
+      const shortfalls: string[] = [];
+      applyStockDelta((variant) => {
+        const line = target.items.find((item) => item.variantId === variant.id);
+        if (!line) return null;
+
+        if (variant.stockQuantity < line.quantity) {
+          shortfalls.push(`${variant.sku} (wanted ${line.quantity}, ${variant.stockQuantity} left)`);
+        }
+
+        return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - line.quantity) };
+      });
+
+      showToast({
+        type: shortfalls.length > 0 ? 'info' : 'success',
+        title: `Order ${target.orderNumber} reopened`,
+        description:
+          shortfalls.length > 0
+            ? `Stock was short for: ${shortfalls.join(', ')}. Adjust inventory before dispatch.`
+            : 'Reserved stock taken off the shelf again.',
+      });
+    },
+    [applyStockDelta, commitOrders, showToast]
+  );
+
+  /* ------------------------------------------------------------------ *
+   * Backup & restore
+   * ------------------------------------------------------------------ */
+
+  const importBackup = useCallback(
+    (backup: StoreBackup) => {
+      commitProducts(backup.products);
+      commitOrders(backup.orders);
+
+      // The restored catalog may no longer contain variants sitting in the bag.
+      const reconciledCart = cartRef.current.filter((item) =>
+        backup.products.some(
+          (product) =>
+            product.id === item.product.id &&
+            product.variants.some((variant) => variant.id === item.variantId)
+        )
+      );
+      if (reconciledCart.length !== cartRef.current.length) commitCart(reconciledCart);
+
+      showToast({
+        type: 'success',
+        title: 'Backup restored',
+        description: `${backup.products.length} products and ${backup.orders.length} orders loaded.`,
+      });
+    },
+    [commitCart, commitOrders, commitProducts, showToast]
+  );
+
   const reviews = CUSTOMER_REVIEWS;
 
   const getProductReviews = useCallback(
@@ -639,6 +785,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       totalOrders: orders.length,
       pendingVerificationCount: orders.filter((order) => order.status === 'pending_verification').length,
       dispatchedCount: orders.filter((order) => order.status === 'dispatched').length,
+      cancelledCount: orders.filter((order) => order.status === 'cancelled').length,
       totalStockUnits: products.reduce(
         (sum, product) => sum + product.variants.reduce((acc, variant) => acc + variant.stockQuantity, 0),
         0
@@ -672,6 +819,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       orders,
       createOrder,
       updateOrderStatus,
+      setOrderPaymentReference,
+      cancelOrder,
+      reopenOrder,
       selectedDelivery,
       setSelectedDelivery,
 
@@ -680,6 +830,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       adjustVariantStock,
       toggleProductActive,
       resetDemoData,
+      importBackup,
 
       isAdminUnlocked,
       adminAttemptsRemaining: Math.max(0, MAX_ADMIN_ATTEMPTS - attemptState.attempts),
@@ -721,12 +872,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       orders,
       createOrder,
       updateOrderStatus,
+      setOrderPaymentReference,
+      cancelOrder,
+      reopenOrder,
       selectedDelivery,
       addProduct,
       setVariantStock,
       adjustVariantStock,
       toggleProductActive,
       resetDemoData,
+      importBackup,
       isAdminUnlocked,
       attemptState.attempts,
       lockSecondsRemaining,

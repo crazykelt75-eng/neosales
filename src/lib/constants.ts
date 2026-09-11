@@ -140,7 +140,21 @@ export const ORDER_STATUS_META: Record<
     description: 'Delivered or collected. Sale closed.',
     accent: 'neutral',
   },
+  cancelled: {
+    label: 'Cancelled',
+    description: 'Reserved stock returned to the catalog.',
+    accent: 'red',
+  },
 };
+
+/** Pre-set cancellation reasons offered on the order card. */
+export const CANCEL_REASONS = [
+  'Payment not received',
+  'Customer changed their mind',
+  'Wrong size or variant ordered',
+  'Item out of stock',
+  'Duplicate order',
+] as const;
 
 /** Category tabs shown above the catalog grid. */
 export const CATEGORY_TABS: { id: ProductCategory | 'all'; label: string }[] = [

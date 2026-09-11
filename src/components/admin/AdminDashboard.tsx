@@ -2,25 +2,37 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { ClipboardList, Cloud, CloudOff, Lock, PackagePlus, RotateCcw, Store, Warehouse } from 'lucide-react';
+import {
+  ClipboardList,
+  Cloud,
+  CloudOff,
+  DatabaseBackup,
+  Lock,
+  PackagePlus,
+  RotateCcw,
+  Store,
+  Warehouse,
+} from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { SalesMetrics } from '@/components/admin/SalesMetrics';
 import { OrderKanban } from '@/components/admin/OrderKanban';
 import { InventoryManager } from '@/components/admin/InventoryManager';
 import { AddProductModal } from '@/components/admin/AddProductModal';
+import { DataBackupPanel } from '@/components/admin/DataBackupPanel';
 import { Button } from '@/components/ui/Button';
 import { SELLER_CONFIG } from '@/lib/constants';
 
-type DashboardTab = 'orders' | 'inventory';
+type DashboardTab = 'orders' | 'inventory' | 'data';
 
 const TAB_LABELS: Record<DashboardTab, string> = {
   orders: 'Order pipeline',
   inventory: 'Live inventory',
+  data: 'Data & backup',
 };
 
 /** Seller operations shell: KPI strip plus a tabbed orders / inventory workspace. */
 export function AdminDashboard() {
-  const { lockAdmin, resetDemoData, isCloudSync, metrics, orders } = useStore();
+  const { lockAdmin, isCloudSync, metrics, orders } = useStore();
 
   const [activeTab, setActiveTab] = useState<DashboardTab>('orders');
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -65,8 +77,13 @@ export function AdminDashboard() {
               Add product
             </Button>
 
-            <Button variant="ghost" size="sm" onClick={resetDemoData} leftIcon={<RotateCcw size={15} />}>
-              Reset data
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setActiveTab('data')}
+              leftIcon={<DatabaseBackup size={15} />}
+            >
+              Backup
             </Button>
 
             <Link
@@ -104,7 +121,9 @@ export function AdminDashboard() {
                   : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
               }`}
             >
-              {tab === 'orders' ? <ClipboardList size={15} aria-hidden="true" /> : <Warehouse size={15} aria-hidden="true" />}
+              {tab === 'orders' && <ClipboardList size={15} aria-hidden="true" />}
+              {tab === 'inventory' && <Warehouse size={15} aria-hidden="true" />}
+              {tab === 'data' && <DatabaseBackup size={15} aria-hidden="true" />}
               {TAB_LABELS[tab]}
               {tab === 'orders' && metrics.pendingVerificationCount > 0 && (
                 <span className="rounded-full bg-amber-400/90 px-1.5 font-mono text-2xs font-black text-neutral-950">
@@ -121,7 +140,9 @@ export function AdminDashboard() {
           aria-labelledby={`dashboard-tab-${activeTab}`}
           tabIndex={0}
         >
-          {activeTab === 'orders' ? <OrderKanban /> : <InventoryManager />}
+          {activeTab === 'orders' && <OrderKanban />}
+          {activeTab === 'inventory' && <InventoryManager />}
+          {activeTab === 'data' && <DataBackupPanel />}
         </div>
 
         {metrics.lowStockVariants.length > 0 && (

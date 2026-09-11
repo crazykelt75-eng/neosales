@@ -10,7 +10,8 @@
 --   * Stock is reserved by the application the moment an order is created and
 --     pushed to `product_variants.stock_quantity` (see lib/supabaseClient.ts).
 --     There is intentionally no payment-triggered stock trigger, which would
---     double-decrement against the client-side reservation.
+--     double-decrement against the client-side reservation. Cancelling an order
+--     returns its reserved units to stock the same way (status = 'cancelled').
 --   * Row Level Security keeps the catalog publicly readable and allows guest
 --     order insertion, while order mutations stay server-side (service role or
 --     an Edge Function with the seller PIN). The admin dashboard is local-first
@@ -33,7 +34,8 @@ DO $$ BEGIN
         'pending_verification',
         'payment_confirmed',
         'dispatched',
-        'completed'
+        'completed',
+        'cancelled'
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
@@ -130,6 +132,10 @@ CREATE TABLE IF NOT EXISTS orders (
     status              order_status NOT NULL DEFAULT 'pending_verification',
     verification_notes  TEXT,
     verified_at         TIMESTAMPTZ,
+    -- Mobile money / Pay2Cell transaction ID quoted by the customer or read off the SMS.
+    payment_reference   VARCHAR(64),
+    cancelled_at        TIMESTAMPTZ,
+    cancel_reason       VARCHAR(160),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT orders_total_matches_components
         CHECK (total_amount_bwp = subtotal_bwp + delivery_fee_bwp)
@@ -241,6 +247,9 @@ SELECT
     o.status,
     o.verification_notes,
     o.verified_at,
+    o.payment_reference,
+    o.cancelled_at,
+    o.cancel_reason,
     o.created_at,
     COALESCE(SUM(oi.quantity), 0) AS total_units,
     COUNT(oi.id)                  AS line_count
@@ -312,3 +321,4 @@ VALUES
 -- SELECT category, COUNT(*) FROM products WHERE is_active GROUP BY category;
 -- SELECT sku, stock_quantity FROM product_variants ORDER BY stock_quantity ASC LIMIT 5;
 -- SELECT order_number, status, total_amount_bwp FROM order_pipeline ORDER BY created_at DESC LIMIT 10;
+-- SELECT status, COUNT(*), SUM(total_amount_bwp) FROM orders GROUP BY status;

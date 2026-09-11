@@ -59,7 +59,10 @@ interface OrderRow {
   total_amount_bwp: number | string;
   status: OrderStatus;
   verified_at: string | null;
+  payment_reference: string | null;
   verification_notes: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
   created_at: string;
   order_items:
     | {
@@ -129,7 +132,8 @@ export async function fetchLiveOrders(): Promise<Order[] | null> {
     .select(
       `id, order_number, customer_name, customer_phone, customer_town, customer_address,
        delivery_preference, delivery_location, payment_method, subtotal_bwp,
-       delivery_fee_bwp, total_amount_bwp, status, verified_at, verification_notes, created_at,
+       delivery_fee_bwp, total_amount_bwp, status, verified_at, payment_reference,
+       verification_notes, cancelled_at, cancel_reason, created_at,
        order_items (
          id, product_id, variant_id, product_title_snapshot, variant_label_snapshot,
          unit_price_bwp, quantity, line_total_bwp
@@ -170,7 +174,10 @@ export async function fetchLiveOrders(): Promise<Order[] | null> {
       status: row.status,
       createdAt: row.created_at,
       verifiedAt: row.verified_at ?? undefined,
+      paymentReference: row.payment_reference ?? undefined,
       verificationNotes: row.verification_notes ?? undefined,
+      cancelledAt: row.cancelled_at ?? undefined,
+      cancelReason: row.cancel_reason ?? undefined,
     };
   });
 }
@@ -197,6 +204,9 @@ export async function persistOrder(order: Order): Promise<void> {
         delivery_fee_bwp: order.deliveryFeeBWP,
         total_amount_bwp: order.totalAmountBWP,
         status: order.status,
+        payment_reference: order.paymentReference ?? null,
+        cancelled_at: order.cancelledAt ?? null,
+        cancel_reason: order.cancelReason ?? null,
       })
       .select('id')
       .single();
@@ -231,6 +241,9 @@ export async function syncOrderStatus(order: Order): Promise<void> {
         status: order.status,
         verification_notes: order.verificationNotes ?? null,
         verified_at: order.verifiedAt ?? null,
+        payment_reference: order.paymentReference ?? null,
+        cancelled_at: order.cancelledAt ?? null,
+        cancel_reason: order.cancelReason ?? null,
       })
       .eq('order_number', order.orderNumber);
   } catch {

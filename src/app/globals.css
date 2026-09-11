@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --foreground-rgb: 248, 250, 252;
+    --background-start: #07080c;
+    --background-end: #0c0e15;
+    
+    /* Design Tokens - Midnight Obsidian Luxury */
+    --surface-card: #0e1118;
+    --surface-elevated: #131722;
+    --surface-subtle: #181d2a;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.2);
+    
+    /* Semantic Status */
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-error: #ef4444;
+    --color-info: #06b6d4;
+
+    /* Safe Area Insets fallback */
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sat: env(safe-area-inset-top, 0px);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    color-scheme: dark;
+  }
+
+  body {
+    color: rgb(var(--foreground-rgb));
+    background-color: #07080c;
+    background-image: 
+      radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255, 102, 0, 0.14), transparent 70%),
+      radial-gradient(ellipse 60% 40% at 100% 25%, rgba(0, 203, 255, 0.05), transparent 60%),
+      radial-gradient(ellipse 50% 50% at 0% 65%, rgba(255, 102, 0, 0.04), transparent 50%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Universal focus-visible accessibility styling */
+  *:focus-visible {
+    outline: 2px solid #ff6600;
+    outline-offset: 2px;
+  }
+
+  /* Ensure minimum touch target for mobile interactive tags where possible */
+  button, 
+  [role="button"], 
+  a, 
+  input[type="button"], 
+  input[type="submit"] {
+    touch-action: manipulation;
+  }
+}
+
+@layer utilities {
+  /* Safe Area Support */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .bottom-safe {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Frosted Glass surfaces */
+  .glass-panel {
+    background: rgba(14, 17, 24, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-panel-dark {
+    background: rgba(10, 12, 18, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Micro-interactions */
+  .interactive-scale {
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .interactive-scale:active {
+    transform: scale(0.98);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #07080c;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e2230;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2d3345;
+}
+
+/* Shimmer Loading Skeleton Animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+/* Subtle Pulse for urgent stock badges */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Hero Spotlight Progress Bar */
+@keyframes heroProgress {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+.hero-progress-bar {
+  animation: heroProgress 6s linear forwards;
+}
+
+/* Star rating filled/empty */
+.star-filled {
+  color: #fbbf24;
+  filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.4));
+}
+
+.star-empty {
+  color: rgba(255, 255, 255, 0.2);
+}

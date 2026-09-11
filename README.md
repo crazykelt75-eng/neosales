@@ -244,11 +244,11 @@ npm run preview      # serves out/ with Cloudflare-Pages routing on :3000
 `npm run build` statically exports **12 pages**: the storefront, `/admin`, `/track` and one page per
 active product.
 
-Pure logic is covered by ad-hoc `tsx` scripts (`/tmp/tier0-check.ts`, `/tmp/phase234-check.ts`) —
-Pula formatting, `+267` validation/normalisation, receipt generation, stock summaries, cancellation
-stock return, backup round-trips, the cash-up ledger by rail, order search/filters, reorder
-suggestions, customer LTV grouping, bundle maths and promo-code validation — **73 assertions, all
-passing**.
+Pure logic is covered by three `tsx` harnesses — `tier0-check` (24 assertions), `phase234-check`
+(41) and `reviews-check` (10) — **75 assertions, all passing**: Pula formatting, `+267`
+validation/normalisation, receipt generation, stock summaries, cancellation stock return, backup
+round-trips, the cash-up ledger by rail, order search/filters, reorder suggestions, customer LTV
+grouping, bundle maths, promo-code validation and order-gated review verification.
 
 > Browser automation was not available in this environment, so interaction flows were verified through
 > static analysis, type checking, production builds and direct HTTP smoke tests of the exported

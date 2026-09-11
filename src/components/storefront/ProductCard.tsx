@@ -6,21 +6,14 @@ import { Product } from '@/types';
 import { useStore } from '@/context/StoreContext';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { getOptimizedImageUrl } from '@/lib/imageUtils';
 
 interface Props {
   product: Product;
+  priority?: boolean;
 }
 
-function getOptimizedImageUrl(url: string, width = 600) {
-  if (!url) return '';
-  if (url.includes('images.unsplash.com')) {
-    const cleanUrl = url.split('?')[0];
-    return `${cleanUrl}?auto=format&fit=crop&w=${width}&q=80`;
-  }
-  return url;
-}
-
-export function ProductCard({ product }: Props) {
+export function ProductCard({ product, priority = false }: Props) {
   const { setSelectedProductForModal } = useStore();
   const [imageLoaded, setImageLoaded] = useState(false);
 
@@ -38,7 +31,7 @@ export function ProductCard({ product }: Props) {
     setSelectedProductForModal(product);
   };
 
-  const optimizedSrc = getOptimizedImageUrl(product.imageUrls[0]);
+  const optimizedSrc = getOptimizedImageUrl(product.imageUrls[0], 500);
 
   return (
     <article className="group relative flex flex-col bg-[#0e1118] rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 hover:border-orangeMoney/40 shadow-soft hover:shadow-[0_12px_35px_-8px_rgba(255,102,0,0.18)] hover:-translate-y-1 transition-all duration-300 active:scale-[0.985]">
@@ -54,7 +47,7 @@ export function ProductCard({ product }: Props) {
 
       {/* Product Image Stage */}
       <div className="relative w-full aspect-[4/5] bg-[#08090f] overflow-hidden">
-        {!imageLoaded && <Skeleton className="absolute inset-0 z-0" />}
+        {!imageLoaded && <Skeleton className="absolute inset-0 z-0 pointer-events-none" />}
 
         {optimizedSrc ? (
           <img
@@ -62,11 +55,11 @@ export function ProductCard({ product }: Props) {
             alt={product.title}
             width="400"
             height="500"
+            decoding="async"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : 'auto'}
             onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-            loading="lazy"
+            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out relative z-[1]"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-neutral-400 text-xs">

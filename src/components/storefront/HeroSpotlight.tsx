@@ -16,6 +16,7 @@ import { useStore } from '@/context/StoreContext';
 import { CUSTOMER_REVIEWS } from '@/lib/mockData';
 import { Product, CustomerReview } from '@/types';
 import { Button } from '@/components/ui/Button';
+import { getOptimizedImageUrl } from '@/lib/imageUtils';
 
 const SLIDE_INTERVAL = 6000; // 6 seconds per slide
 
@@ -120,6 +121,7 @@ export function HeroSpotlight() {
 
   const slide = slides[currentIndex];
   const featuredReview = slide.reviews[0];
+  const slideImgSrc = getOptimizedImageUrl(slide.product.imageUrls[0], 800);
 
   return (
     <section
@@ -143,9 +145,11 @@ export function HeroSpotlight() {
       {/* Background product image (right side on desktop, full on mobile) */}
       <div className="absolute inset-0 z-0">
         <img
-          src={slide.product.imageUrls[0]}
+          src={slideImgSrc}
           alt=""
           aria-hidden="true"
+          loading="eager"
+          decoding="async"
           className="w-full h-full object-cover opacity-20 sm:opacity-30"
         />
         {/* Gradient overlays */}
@@ -201,10 +205,12 @@ export function HeroSpotlight() {
             {/* Mobile Product Visual Preview */}
             <div className="block lg:hidden w-full relative rounded-2xl overflow-hidden aspect-[16/9] sm:aspect-[2/1] border border-white/10 shadow-elevated my-1">
               <img
-                src={slide.product.imageUrls[0]}
+                src={slideImgSrc}
                 alt={slide.product.title}
                 className="w-full h-full object-cover"
                 loading="eager"
+                decoding="async"
+                fetchPriority="high"
               />
             </div>
 
@@ -240,8 +246,11 @@ export function HeroSpotlight() {
           >
             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-white/10 shadow-elevated group/img">
               <img
-                src={slide.product.imageUrls[0]}
+                src={slideImgSrc}
                 alt={slide.product.title}
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
                 className="w-full h-full object-cover transition-transform duration-700 group-hover/img:scale-105"
               />
             </div>

@@ -5,6 +5,7 @@ import { X, Trash2, ArrowRight, ShoppingBag, Truck, ShieldCheck } from 'lucide-r
 import { useStore } from '@/context/StoreContext';
 import { CheckoutModal } from '@/components/checkout/CheckoutModal';
 import { Button } from '@/components/ui/Button';
+import { getOptimizedImageUrl } from '@/lib/imageUtils';
 
 export function CartDrawer() {
   const { cart, removeFromCart, updateCartQuantity, cartSubtotal, isCartOpen, setIsCartOpen } =
@@ -144,8 +145,10 @@ export function CartDrawer() {
                   <div key={item.variantId} className="pt-3.5 first:pt-0 flex gap-3.5 items-center">
                     <div className="w-20 h-20 bg-[#08090f] rounded-2xl overflow-hidden flex-shrink-0 border border-white/10">
                       <img
-                        src={item.product.imageUrls[0]}
+                        src={getOptimizedImageUrl(item.product.imageUrls[0], 200)}
                         alt={item.product.title}
+                        decoding="async"
+                        loading="lazy"
                         className="w-full h-full object-cover"
                       />
                     </div>

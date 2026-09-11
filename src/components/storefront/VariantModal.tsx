@@ -7,6 +7,7 @@ import { useStore } from '@/context/StoreContext';
 import { useToast } from '@/components/ui/Toast';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { getOptimizedImageUrl } from '@/lib/imageUtils';
 
 export function VariantModal() {
   const { selectedProductForModal, setSelectedProductForModal, addToCart } = useStore();
@@ -145,8 +146,9 @@ export function VariantModal() {
           {/* Gallery / Image Display */}
           <div className="relative aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-[#08090f] border border-white/10">
             <img
-              src={product.imageUrls[activeImageIdx] || product.imageUrls[0]}
+              src={getOptimizedImageUrl(product.imageUrls[activeImageIdx] || product.imageUrls[0], 800)}
               alt={product.title}
+              decoding="async"
               className="w-full h-full object-cover object-center"
             />
             {product.imageUrls.length > 1 && (

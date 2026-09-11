@@ -5,6 +5,7 @@ import { Product, ProductVariant, CartItem, Order, OrderStatus, StoreMetrics, Cu
 import { INITIAL_PRODUCTS, INITIAL_ORDERS } from '@/lib/mockData';
 import { DELIVERY_OPTIONS_LABELS } from '@/lib/whatsapp';
 import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { getOptimizedImageUrl } from '@/lib/imageUtils';
 
 interface StoreContextType {
   // Products
@@ -77,7 +78,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const savedProducts = localStorage.getItem(STORAGE_PRODUCTS_KEY);
-      if (savedProducts) setProducts(JSON.parse(savedProducts));
+      if (savedProducts) {
+        const parsed: Product[] = JSON.parse(savedProducts);
+        const sanitized = parsed.map((p) => ({
+          ...p,
+          imageUrls: (p.imageUrls || []).map((url) => getOptimizedImageUrl(url)),
+        }));
+        setProducts(sanitized);
+      }
 
       const savedOrders = localStorage.getItem(STORAGE_ORDERS_KEY);
       if (savedOrders) setOrders(JSON.parse(savedOrders));
@@ -129,7 +137,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               basePriceBWP: Number(p.base_price_bwp),
               isActive: p.is_active,
               isNewArrival: p.is_new_arrival,
-              imageUrls: p.image_urls || [],
+              imageUrls: (p.image_urls || []).map((url: string) => getOptimizedImageUrl(url)),
               featuredTag: p.featured_tag,
               variants: (p.product_variants || []).map((v: any) => ({
                 id: v.id,

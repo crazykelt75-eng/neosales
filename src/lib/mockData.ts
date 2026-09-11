@@ -12,8 +12,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     isNewArrival: true,
     featuredTag: 'Top Seller',
     imageUrls: [
-      'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1547887537-6158d64c35b3?w=800&auto=format&fit=crop&q=80',
+      '/products/rouge-1.jpg',
+      '/products/rouge-2.jpg',
     ],
     variants: [
       {
@@ -59,7 +59,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isNewArrival: false,
     featuredTag: 'Customer Favorite',
     imageUrls: [
-      'https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=800&auto=format&fit=crop&q=80',
+      '/products/oud-1.jpg',
     ],
     variants: [
       {
@@ -94,7 +94,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isActive: true,
     isNewArrival: true,
     imageUrls: [
-      'https://images.unsplash.com/photo-1616949755610-8c9bbc08f138?w=800&auto=format&fit=crop&q=80',
+      '/products/vanilla-1.jpg',
     ],
     variants: [
       {
@@ -130,8 +130,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     isNewArrival: true,
     featuredTag: 'Summer Essential',
     imageUrls: [
-      'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&auto=format&fit=crop&q=80',
+      '/products/shirt-1.jpg',
+      '/products/shirt-2.jpg',
     ],
     variants: [
       {
@@ -196,7 +196,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isActive: true,
     isNewArrival: false,
     imageUrls: [
-      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop&q=80',
+      '/products/palazzo-1.jpg',
     ],
     variants: [
       {
@@ -241,7 +241,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     isActive: true,
     isNewArrival: true,
     imageUrls: [
-      'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80',
+      '/products/bag-1.jpg',
     ],
     variants: [
       {

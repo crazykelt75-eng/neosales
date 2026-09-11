@@ -3,12 +3,11 @@ import { Loader2 } from 'lucide-react';
 
 export type ButtonVariant =
   | 'primary'
+  | 'amber'
   | 'secondary'
   | 'outline'
   | 'ghost'
   | 'whatsapp'
-  | 'orangeMoney'
-  | 'fnb'
   | 'danger';
 
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -17,9 +16,34 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;
+  fullWidth?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
 }
+
+const BASE_STYLES =
+  'inline-flex select-none items-center justify-center gap-2 rounded-xl font-bold tracking-tight transition-all duration-150 ease-luxe focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orangeMoney active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50';
+
+const SIZE_STYLES: Record<ButtonSize, string> = {
+  sm: 'min-h-[38px] px-3.5 text-xs',
+  md: 'min-h-[44px] px-4 text-sm',
+  lg: 'min-h-[52px] px-6 text-sm sm:text-base',
+};
+
+const VARIANT_STYLES: Record<ButtonVariant, string> = {
+  primary:
+    'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-[0_10px_30px_-12px_rgba(255,102,0,0.9)] hover:from-orangeMoney-light hover:to-orangeMoney',
+  amber:
+    'bg-gradient-to-r from-amber-400 to-amber-600 text-neutral-950 shadow-[0_10px_30px_-14px_rgba(245,158,11,0.9)] hover:from-amber-300 hover:to-amber-500',
+  secondary:
+    'bg-white/[0.07] text-white border border-white/12 hover:bg-white/[0.12] hover:border-white/20',
+  outline:
+    'bg-transparent text-neutral-200 border border-white/15 hover:border-orangeMoney/50 hover:text-white hover:bg-orangeMoney/5',
+  ghost: 'bg-transparent text-neutral-300 hover:bg-white/[0.07] hover:text-white',
+  whatsapp:
+    'bg-whatsapp text-neutral-950 shadow-[0_10px_30px_-12px_rgba(37,211,102,0.9)] hover:bg-whatsapp-dark hover:text-white',
+  danger: 'bg-red-600 text-white hover:bg-red-500 shadow-[0_10px_30px_-14px_rgba(239,68,68,0.9)]',
+};
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -29,6 +53,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant = 'primary',
       size = 'md',
       isLoading = false,
+      fullWidth = false,
       leftIcon,
       rightIcon,
       disabled,
@@ -36,58 +61,36 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ...props
     },
     ref
-  ) => {
-    // Base styles: 44px min target on mobile, smooth transitions, focus-visible outline
-    const baseStyles =
-      'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 select-none active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed';
+  ) => (
+    <button
+      ref={ref}
+      type={type}
+      disabled={disabled || isLoading}
+      aria-busy={isLoading || undefined}
+      className={`${BASE_STYLES} ${SIZE_STYLES[size]} ${VARIANT_STYLES[variant]} ${
+        fullWidth ? 'w-full' : ''
+      } ${className}`}
+      {...props}
+    >
+      {isLoading ? (
+        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+      ) : (
+        leftIcon && (
+          <span className="flex-shrink-0" aria-hidden="true">
+            {leftIcon}
+          </span>
+        )
+      )}
 
-    // Size variants
-    const sizeStyles = {
-      sm: 'text-xs px-3 py-1.5 min-h-[36px] sm:min-h-[32px] gap-1.5',
-      md: 'text-xs sm:text-sm px-4 py-2.5 min-h-[44px] gap-2',
-      lg: 'text-sm sm:text-base px-5 py-3.5 min-h-[48px] gap-2.5',
-    };
+      <span className="truncate">{children}</span>
 
-    // Variant color styles
-    const variantStyles = {
-      primary:
-        'bg-neutral-900 text-white hover:bg-neutral-800 shadow-sm focus-visible:outline-neutral-900',
-      secondary:
-        'bg-neutral-100 text-neutral-800 hover:bg-neutral-200 border border-neutral-200 focus-visible:outline-neutral-700',
-      outline:
-        'bg-transparent text-neutral-800 border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400 focus-visible:outline-neutral-800',
-      ghost:
-        'bg-transparent text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-neutral-800',
-      whatsapp:
-        'bg-[#25D366] text-white hover:bg-[#20bd5a] shadow-md shadow-emerald-500/20 focus-visible:outline-[#25D366]',
-      orangeMoney:
-        'bg-orangeMoney text-white hover:bg-orangeMoney-dark shadow-md shadow-orangeMoney/20 focus-visible:outline-orangeMoney',
-      fnb:
-        'bg-fnb text-white hover:bg-fnb-dark shadow-md shadow-fnb/20 focus-visible:outline-fnb',
-      danger:
-        'bg-red-600 text-white hover:bg-red-700 shadow-sm focus-visible:outline-red-600',
-    };
-
-    return (
-      <button
-        ref={ref}
-        type={type}
-        disabled={disabled || isLoading}
-        className={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${className}`}
-        {...props}
-      >
-        {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin text-current" aria-hidden="true" />
-        ) : (
-          leftIcon && <span className="flex-shrink-0" aria-hidden="true">{leftIcon}</span>
-        )}
-        <span>{children}</span>
-        {!isLoading && rightIcon && (
-          <span className="flex-shrink-0" aria-hidden="true">{rightIcon}</span>
-        )}
-      </button>
-    );
-  }
+      {!isLoading && rightIcon && (
+        <span className="flex-shrink-0" aria-hidden="true">
+          {rightIcon}
+        </span>
+      )}
+    </button>
+  )
 );
 
 Button.displayName = 'Button';

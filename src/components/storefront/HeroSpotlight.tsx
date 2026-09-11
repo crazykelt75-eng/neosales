@@ -1,325 +1,332 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Sparkles,
-  Star,
-  ShieldCheck,
-  Truck,
-  ArrowRight,
+  BadgeCheck,
   ChevronLeft,
   ChevronRight,
   Pause,
   Play,
+  ShieldCheck,
+  Sparkles,
+  Truck,
 } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
-import { CUSTOMER_REVIEWS } from '@/lib/mockData';
-import { Product, CustomerReview } from '@/types';
-import { Button } from '@/components/ui/Button';
+import { Product } from '@/types';
 import { getOptimizedImageUrl } from '@/lib/imageUtils';
+import { formatBWP } from '@/lib/format';
+import { getProductStatusSummary, getProductTeaser } from '@/lib/product';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { StarRating } from '@/components/ui/StarRating';
+import { TRUST_BAR_ITEMS } from '@/lib/mockData';
 
-const SLIDE_INTERVAL = 6000; // 6 seconds per slide
+const SLIDE_DURATION_MS = 6000;
 
-interface SpotlightSlide {
+const TRUST_ICONS = [Truck, ShieldCheck, BadgeCheck];
+
+interface Spotlight {
   product: Product;
-  reviews: CustomerReview[];
-  averageRating: number;
+  rating: number;
   reviewCount: number;
+  quote: string;
+  reviewer: string;
+  reviewerTown: string;
 }
 
-function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
-  return (
-    <div className="flex items-center gap-0.5" aria-label={`${rating} out of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
-          key={i}
-          size={size}
-          className={i <= rating ? 'star-filled' : 'star-empty'}
-          fill={i <= rating ? 'currentColor' : 'none'}
-          aria-hidden="true"
-        />
-      ))}
-    </div>
-  );
-}
-
+/**
+ * Hero spotlight carousel highlighting the best-reviewed new arrivals.
+ *
+ * WCAG 2.2.2 (Pause, Stop, Hide): auto-advance can always be stopped through the
+ * explicit Pause/Play toggle, and it also pauses when the tab is hidden or when
+ * the visitor prefers reduced motion.
+ */
 export function HeroSpotlight() {
-  const { products, setSelectedProductForModal } = useStore();
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const progressKeyRef = useRef(0);
-  const currentIndexRef = useRef(0);
-  const isTransitioningRef = useRef(false);
+  const { products, getProductReviews, getProductRating, openProduct } = useStore();
 
-  // Build slides from new arrival products that have reviews
-  const slides: SpotlightSlide[] = products
-    .filter((p) => p.isNewArrival && p.isActive)
-    .map((product) => {
-      const productReviews = CUSTOMER_REVIEWS.filter((r) => r.productId === product.id);
-      const avgRating =
-        productReviews.length > 0
-          ? productReviews.reduce((sum, r) => sum + r.rating, 0) / productReviews.length
-          : 0;
-      return {
-        product,
-        reviews: productReviews,
-        averageRating: Math.round(avgRating * 10) / 10,
-        reviewCount: productReviews.length,
-      };
-    })
-    .filter((s) => s.reviewCount > 0); // Only show products with reviews
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isUserPaused, setIsUserPaused] = useState(false);
+  const [isHoverPaused, setIsHoverPaused] = useState(false);
+  const [progressKey, setProgressKey] = useState(0);
+  const regionRef = useRef<HTMLDivElement | null>(null);
 
-  const slidesLengthRef = useRef(slides.length);
-  slidesLengthRef.current = slides.length;
+  // Autoplay stops for an explicit user pause, while hovering/focusing the carousel,
+  // and when the OS asks for reduced motion.
+  const isPaused = isUserPaused || isHoverPaused;
 
-  const goToSlide = useCallback((index: number) => {
-    if (isTransitioningRef.current) return;
-    isTransitioningRef.current = true;
-    setIsTransitioning(true);
-    setTimeout(() => {
-      currentIndexRef.current = index;
-      setCurrentIndex(index);
-      progressKeyRef.current += 1;
-      setTimeout(() => {
-        isTransitioningRef.current = false;
-        setIsTransitioning(false);
-      }, 50);
-    }, 200);
+  const spotlights = useMemo<Spotlight[]>(() => {
+    return products
+      .filter((product) => product.isActive && product.isNewArrival)
+      .map((product) => {
+        const reviews = getProductReviews(product.id);
+        const { average, count } = getProductRating(product.id);
+        const topReview = [...reviews].sort((a, b) => b.rating - a.rating)[0];
+
+        return {
+          product,
+          rating: average,
+          reviewCount: count,
+          quote: topReview?.comment ?? product.description,
+          reviewer: topReview?.customerName ?? 'Verified NeoSales buyer',
+          reviewerTown: topReview?.town ?? 'Botswana',
+        };
+      })
+      .filter((spotlight) => !getProductStatusSummary(spotlight.product).isSoldOut)
+      .sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount)
+      .slice(0, 4);
+  }, [products, getProductRating, getProductReviews]);
+
+  const slideCount = spotlights.length;
+  const safeIndex = slideCount > 0 ? activeIndex % slideCount : 0;
+  const activeSpotlight = spotlights[safeIndex];
+
+  const goToSlide = useCallback(
+    (nextIndex: number) => {
+      if (slideCount === 0) return;
+      setActiveIndex(((nextIndex % slideCount) + slideCount) % slideCount);
+      setProgressKey((key) => key + 1);
+    },
+    [slideCount]
+  );
+
+  const goToNextSlide = useCallback(() => goToSlide(safeIndex + 1), [goToSlide, safeIndex]);
+  const goToPreviousSlide = useCallback(() => goToSlide(safeIndex - 1), [goToSlide, safeIndex]);
+
+  // Respect the OS-level reduced-motion preference before auto-advancing.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setIsUserPaused(true);
   }, []);
 
-  const nextSlide = useCallback(() => {
-    if (slidesLengthRef.current === 0) return;
-    goToSlide((currentIndexRef.current + 1) % slidesLengthRef.current);
-  }, [goToSlide]);
-
-  const prevSlide = useCallback(() => {
-    if (slidesLengthRef.current === 0) return;
-    goToSlide((currentIndexRef.current - 1 + slidesLengthRef.current) % slidesLengthRef.current);
-  }, [goToSlide]);
-
-  // Auto-advance timer — stable references prevent interval resets
+  // Auto-advance timer, suspended while paused or when the tab is in the background.
   useEffect(() => {
-    if (isPaused || slides.length <= 1) return;
-    const timer = setInterval(() => {
-      nextSlide();
-    }, SLIDE_INTERVAL);
-    return () => clearInterval(timer);
-  }, [isPaused, slides.length, nextSlide]);
+    if (isPaused || slideCount <= 1) return;
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') prevSlide();
-      if (e.key === 'ArrowRight') nextSlide();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [prevSlide, nextSlide]);
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      setActiveIndex((index) => (index + 1) % slideCount);
+      setProgressKey((key) => key + 1);
+    }, SLIDE_DURATION_MS);
 
-  if (slides.length === 0) return null;
+    return () => window.clearInterval(timer);
+  }, [isPaused, slideCount, progressKey]);
 
-  const slide = slides[currentIndex];
-  const featuredReview = slide.reviews[0];
-  const slideImgSrc = getOptimizedImageUrl(slide.product.imageUrls[0], 800);
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      goToNextSlide();
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      goToPreviousSlide();
+    }
+  };
+
+  if (!activeSpotlight) return null;
+
+  const { product, rating, reviewCount, quote, reviewer, reviewerTown } = activeSpotlight;
+  const summary = getProductStatusSummary(product);
 
   return (
-    <section
-      aria-roledescription="carousel"
-      aria-label="New arrivals spotlight with customer reviews"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      onFocus={() => setIsPaused(true)}
-      onBlur={() => setIsPaused(false)}
-      className="relative overflow-hidden rounded-3xl bg-[#0a0c12]/95 text-white shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9),0_0_45px_-10px_rgba(255,102,0,0.18)] border border-white/10 group backdrop-blur-xl"
-    >
-      {/* Progress Bar */}
-      <div className="absolute top-0 left-0 right-0 z-20 h-[3px] bg-white/10">
+    <section aria-label="Featured new arrivals" className="space-y-4">
+      <div
+        ref={regionRef}
+        role="region"
+        aria-roledescription="carousel"
+        aria-label="New arrivals spotlight"
+        onKeyDown={handleKeyDown}
+        onMouseEnter={() => setIsHoverPaused(true)}
+        onMouseLeave={() => setIsHoverPaused(false)}
+        onFocus={() => setIsHoverPaused(true)}
+        onBlur={() => setIsHoverPaused(false)}
+        className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-surface via-[#0b0e15] to-[#120c07] shadow-card"
+      >
+        {/* Ambient brand glow */}
         <div
-          key={`progress-${currentIndex}-${progressKeyRef.current}`}
-          className="h-full bg-gradient-to-r from-orangeMoney to-amber-400 hero-progress-bar"
-          style={{ animationPlayState: isPaused ? 'paused' : 'running' }}
-        />
-      </div>
-
-      {/* Background product image (right side on desktop, full on mobile) */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src={slideImgSrc}
-          alt=""
           aria-hidden="true"
-          loading="eager"
-          decoding="async"
-          className="w-full h-full object-cover opacity-20 sm:opacity-30"
+          className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-orangeMoney/20 blur-3xl"
         />
-        {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-neutral-950/95 to-neutral-950/60" />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
-      </div>
 
-      {/* Ambient glows */}
-      <div
-        className="absolute -top-32 -right-32 w-[500px] h-[500px] bg-gradient-to-br from-orangeMoney/20 to-transparent rounded-full blur-3xl pointer-events-none"
-        aria-hidden="true"
-      />
-      <div
-        className="absolute -bottom-32 -left-32 w-96 h-96 bg-gradient-to-tr from-bw-blue/15 to-transparent rounded-full blur-3xl pointer-events-none"
-        aria-hidden="true"
-      />
-
-      {/* Main Content */}
-      <div className="relative z-10 p-6 sm:p-10 lg:p-12">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-12">
-          {/* Left: Product Info & Review */}
+        <div className="grid gap-0 md:grid-cols-[1.05fr_0.95fr]">
+          {/* Story column */}
           <div
-            className={`flex-1 max-w-xl space-y-5 transition-all duration-300 ${
-              isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
-            }`}
+            key={product.id}
+            className="relative z-10 order-2 flex flex-col justify-center gap-4 p-5 animate-fadeIn sm:p-7 md:order-1"
           >
-            {/* Top badge - single, clean badge */}
-            <div>
-              <span className="inline-flex items-center gap-1.5 bg-orangeMoney/15 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-orangeMoney border border-orangeMoney/25">
-                <Sparkles size={12} aria-hidden="true" />
-                {slide.product.featuredTag || 'New Arrival'}
-              </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="new" icon={<Sparkles size={11} aria-hidden="true" />}>
+                New arrival
+              </Badge>
+              {product.featuredTag && <Badge variant="amber" icon={null}>{product.featuredTag}</Badge>}
             </div>
 
-            {/* Product Name */}
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-[1.15] text-white">
-              {slide.product.title}
-            </h2>
-
-            {/* Price & Rating - unified, clean row */}
-            <div className="flex items-center gap-4">
-              <span className="text-2xl sm:text-3xl font-black text-white font-mono">
-                P{slide.product.basePriceBWP}
-              </span>
-              <span className="h-4 w-px bg-white/20" aria-hidden="true" />
-              <div className="flex items-center gap-1.5">
-                <StarRating rating={Math.round(slide.averageRating)} size={13} />
-                <span className="text-xs font-bold text-white">{slide.averageRating}</span>
-                <span className="text-xs text-neutral-400">({slide.reviewCount})</span>
-              </div>
-            </div>
-
-            {/* Mobile Product Visual Preview */}
-            <div className="block lg:hidden w-full relative rounded-2xl overflow-hidden aspect-[16/9] sm:aspect-[2/1] border border-white/10 shadow-elevated my-1">
-              <img
-                src={slideImgSrc}
-                alt={slide.product.title}
-                className="w-full h-full object-cover"
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-              />
-            </div>
-
-            {/* Customer Review - Minimalist & Elegant */}
-            <div className="border-l-2 border-orangeMoney/60 pl-3.5 py-0.5">
-              <p className="text-xs sm:text-sm text-neutral-300 italic leading-relaxed line-clamp-2">
-                &ldquo;{featuredReview.comment}&rdquo;
-              </p>
-              <p className="text-[11px] text-neutral-400 font-medium mt-1">
-                — {featuredReview.customerName} · Verified Buyer
+            <div className="space-y-2">
+              <h2 className="text-2xl font-extrabold leading-tight tracking-tight text-white sm:text-3xl">
+                {product.title}
+              </h2>
+              <p className="max-w-md text-xs leading-relaxed text-neutral-300 sm:text-sm">
+                {getProductTeaser(product)}
               </p>
             </div>
 
-            {/* CTA Button */}
-            <div className="pt-1">
+            <div className="flex items-center gap-2.5">
+              <StarRating rating={rating || 5} size={15} withLabel label={`Rated ${rating} out of 5`} />
+              <span className="text-xs font-semibold text-neutral-300">
+                {(rating || 5).toFixed(1)}
+                {reviewCount > 0 && <span className="text-neutral-400"> · {reviewCount} verified reviews</span>}
+              </span>
+            </div>
+
+            {/* Verified buyer quote */}
+            <blockquote className="rounded-2xl border border-white/10 bg-black/35 p-3.5 backdrop-blur">
+              <p className="text-xs italic leading-relaxed text-neutral-200">“{quote}”</p>
+              <footer className="mt-2 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-emerald-300">
+                <BadgeCheck size={13} aria-hidden="true" />
+                {reviewer} · {reviewerTown}
+              </footer>
+            </blockquote>
+
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 variant="primary"
                 size="lg"
-                onClick={() => setSelectedProductForModal(slide.product)}
-                rightIcon={<ArrowRight size={18} aria-hidden="true" />}
-                className="shadow-glow-orange font-bold px-7"
+                onClick={() => openProduct(product)}
+                rightIcon={<ChevronRight size={16} />}
               >
-                Shop Now
+                Select option
               </Button>
+
+              <div className="flex flex-col">
+                <span className="font-mono text-xl font-black text-white sm:text-2xl" data-price>
+                  {formatBWP(summary.minPriceBWP)}
+                </span>
+                <span className="text-2xs font-semibold uppercase tracking-wide text-neutral-400">
+                  {summary.hasPriceRange ? `up to ${formatBWP(summary.maxPriceBWP)}` : 'free Francistown pickup'}
+                </span>
+              </div>
             </div>
-          </div>
 
-          {/* Right: Clean Product Photography without Clutter Stickers */}
-          <div
-            className={`hidden lg:block relative w-72 xl:w-80 flex-shrink-0 transition-all duration-500 ${
-              isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-            }`}
-          >
-            <div className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-white/10 shadow-elevated group/img">
-              <img
-                src={slideImgSrc}
-                alt={slide.product.title}
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover/img:scale-105"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom: Streamlined reassurance + navigation */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-6 pt-5 border-t border-white/10">
-          <div className="flex flex-wrap items-center gap-2.5 text-xs text-neutral-300">
-            <span className="flex items-center gap-1.5">
-              <Truck size={13} className="text-orangeMoney" aria-hidden="true" />
-              Free Francistown Pickups
-            </span>
-            <span className="text-white/20">•</span>
-            <span className="flex items-center gap-1.5">
-              <ShieldCheck size={13} className="text-emerald-400" aria-hidden="true" />
-              Orange Money & FNB Pay2Cell
-            </span>
-          </div>
-
-          {/* Slide Navigation */}
-          {slides.length > 1 && (
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                onClick={() => setIsPaused((prev) => !prev)}
-                aria-pressed={isPaused}
-                aria-label={isPaused ? 'Resume auto-play carousel' : 'Pause auto-play carousel'}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-neutral-400 hover:text-white transition-all focus-visible:outline-2 focus-visible:outline-white"
-              >
-                {isPaused ? <Play size={13} className="fill-current" aria-hidden="true" /> : <Pause size={13} className="fill-current" aria-hidden="true" />}
-              </button>
-
-              <button
-                onClick={prevSlide}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-neutral-400 hover:text-white transition-all focus-visible:outline-2 focus-visible:outline-white"
-                aria-label="Previous product"
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              {/* Dot indicators */}
-              <div className="flex items-center gap-1.5" role="tablist" aria-label="Product slides">
-                {slides.map((_, i) => (
+            {/* Carousel controls */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="flex items-center gap-1.5" role="tablist" aria-label="Choose a featured product">
+                {spotlights.map((spotlight, index) => (
                   <button
-                    key={i}
+                    key={spotlight.product.id}
+                    type="button"
                     role="tab"
-                    aria-selected={i === currentIndex}
-                    aria-label={`Go to product ${i + 1}: ${slides[i].product.title}`}
-                    onClick={() => goToSlide(i)}
-                    className={`rounded-full transition-all duration-300 focus-visible:outline-2 focus-visible:outline-white ${
-                      i === currentIndex
-                        ? 'w-6 h-2 bg-orangeMoney shadow-glow-orange'
-                        : 'w-2 h-2 bg-white/25 hover:bg-white/50'
+                    aria-selected={index === safeIndex}
+                    aria-label={`Show ${spotlight.product.title}`}
+                    onClick={() => goToSlide(index)}
+                    className={`h-2.5 rounded-full transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orangeMoney ${
+                      index === safeIndex
+                        ? 'w-7 bg-gradient-to-r from-amber-400 to-orangeMoney'
+                        : 'w-2.5 bg-white/25 hover:bg-white/45'
                     }`}
                   />
                 ))}
               </div>
 
-              <button
-                onClick={nextSlide}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-neutral-400 hover:text-white transition-all focus-visible:outline-2 focus-visible:outline-white"
-                aria-label="Next product"
-              >
-                <ChevronRight size={16} />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={goToPreviousSlide}
+                  aria-label="Previous featured product"
+                  disabled={slideCount <= 1}
+                  className="rounded-full border border-white/12 bg-white/[0.05] p-2 text-neutral-200 transition-colors hover:bg-white/[0.12] disabled:opacity-40"
+                >
+                  <ChevronLeft size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextSlide}
+                  aria-label="Next featured product"
+                  disabled={slideCount <= 1}
+                  className="rounded-full border border-white/12 bg-white/[0.05] p-2 text-neutral-200 transition-colors hover:bg-white/[0.12] disabled:opacity-40"
+                >
+                  <ChevronRight size={15} aria-hidden="true" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserPaused((paused) => !paused);
+                    setProgressKey((key) => key + 1);
+                  }}
+                  aria-pressed={isUserPaused}
+                  aria-label={isUserPaused ? 'Resume automatic slideshow' : 'Pause automatic slideshow'}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.05] px-3 py-2 text-2xs font-bold uppercase tracking-wide text-neutral-200 transition-colors hover:bg-white/[0.12]"
+                >
+                  {isUserPaused ? <Play size={12} aria-hidden="true" /> : <Pause size={12} aria-hidden="true" />}
+                  {isUserPaused ? 'Play' : 'Pause'}
+                </button>
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Visual column */}
+          <div className="relative order-1 min-h-[240px] overflow-hidden md:order-2 md:min-h-[420px]">
+            <img
+              key={`${product.id}-${progressKey}-image`}
+              src={getOptimizedImageUrl(product.imageUrls[0], 900)}
+              alt={product.title}
+              width={600}
+              height={750}
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+              className="h-full w-full animate-fadeIn object-cover object-center"
+            />
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 bg-gradient-to-t from-[#0b0e15] via-transparent to-transparent md:bg-gradient-to-l md:from-transparent md:via-[#07080c]/20 md:to-[#0b0e15]"
+            />
+
+            {summary.isLowStock && (
+              <div className="absolute left-4 top-4">
+                <Badge variant="lowStock" pulse>
+                  Only {summary.totalStock} left
+                </Badge>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Auto-advance progress bar */}
+        {slideCount > 1 && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 h-[3px] bg-white/[0.06]"
+          >
+            <div
+              key={`${safeIndex}-${progressKey}-${isPaused}`}
+              className="h-full origin-left bg-gradient-to-r from-amber-400 via-orangeMoney to-orangeMoney-dark"
+              style={{
+                animation: `heroProgress ${SLIDE_DURATION_MS}ms linear forwards`,
+                animationPlayState: isPaused ? 'paused' : 'running',
+              }}
+            />
+          </div>
+        )}
       </div>
+
+      {/* Trust bar */}
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {TRUST_BAR_ITEMS.map((item, index) => {
+          const Icon = TRUST_ICONS[index] ?? ShieldCheck;
+
+          return (
+            <li
+              key={item}
+              className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-surface/70 px-3.5 py-3 backdrop-blur"
+            >
+              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300">
+                <Icon size={15} aria-hidden="true" />
+              </span>
+              <span className="text-xs font-semibold text-neutral-200">{item}</span>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

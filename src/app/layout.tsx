@@ -1,83 +1,65 @@
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { StoreProvider } from '@/context/StoreContext';
 import { ToastProvider } from '@/components/ui/Toast';
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-jakarta',
-  display: 'swap',
-  weight: ['400', '500', '600', '700', '800'],
-});
+import { FontLoader } from '@/components/ui/FontLoader';
+import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://neosales.crazykelt75.workers.dev'),
-  alternates: {
-    canonical: '/',
-  },
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: 'NeoSales | Curated Fashion & Niche Perfumes Botswana',
-    template: '%s | NeoSales',
+    default: 'NeoSales | Authentic Perfumes, Summer Apparel & Accessories Botswana',
+    template: '%s | NeoSales Botswana',
   },
   description:
-    'Shop authentic niche extrait perfumes, luxury summer linen shirts, and curated fashion in Botswana from NeoSales. Direct Orange Money & FNB Pay2Cell payment with zero-delay WhatsApp order confirmation.',
+    'Shop authentic extrait perfumes, linen summer apparel and accessories in Botswana. Free Francistown pickups, nationwide Sprint Couriers, and instant checkout with Orange Money, FNB Pay2Cell or cash on pickup.',
+  applicationName: 'NeoSales',
   keywords: [
-    'NeoSales Botswana',
     'Botswana perfumes',
-    'Francistown perfumes',
-    'Tati Siding shopping',
-    'Niche fragrances Francistown & Gaborone',
-    'Linen shirts Botswana',
-    'Orange Money shopping Botswana',
-    'FNB Pay2Cell shopping Francistown',
-    'Botswana online boutique',
-    'Francistown fashion delivery',
+    'Francistown fashion',
+    'Orange Money online shopping',
+    'FNB Pay2Cell shop Botswana',
+    'buy perfume Francistown',
+    'niche extrait perfume Botswana',
+    'linen shirts Botswana',
+    'Gaborone online boutique',
+    'Nswazwi Mall pickup',
+    'nationwide courier Botswana',
   ],
-  authors: [{ name: 'NeoSales Team' }],
+  authors: [{ name: 'NeoSales Botswana' }],
   creator: 'NeoSales',
   publisher: 'NeoSales Botswana',
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
+  category: 'shopping',
+  formatDetection: { email: false, address: false, telephone: false },
+  alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
     locale: 'en_BW',
-    url: 'https://neosales.crazykelt75.workers.dev',
-    siteName: 'NeoSales',
-    title: 'NeoSales | Curated Fashion & Niche Perfumes Botswana',
+    url: SITE_URL,
+    siteName: 'NeoSales Botswana',
+    title: 'NeoSales | Authentic Extrait Perfumes & Summer Apparel in Botswana',
     description:
-      'Zero-friction Botswana e-commerce by NeoSales with Orange Money & FNB Pay2Cell support. 1-tap WhatsApp checkout and nationwide delivery.',
+      'Curated extrait fragrances and breathable summer wear delivered nationwide. Pay with Orange Money or FNB Pay2Cell and confirm your order on WhatsApp in one tap.',
     images: [
       {
-        url: 'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=1200&auto=format&fit=crop&q=85',
-        width: 1200,
-        height: 630,
-        alt: 'NeoSales Niche Perfumes & Apparel Collection',
+        url: '/products/rouge-1.jpg',
+        width: 600,
+        height: 900,
+        alt: 'NeoSales Rouge Seduction extrait de parfum with red blooms',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'NeoSales | Curated Fashion & Niche Perfumes Botswana',
+    title: 'NeoSales | Extrait Perfumes & Summer Apparel Botswana',
     description:
-      'Shop premium perfumes and linen shirts in Botswana with instant Orange Money & FNB Pay2Cell checkout.',
-    images: [
-      'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=1200&auto=format&fit=crop&q=85',
-    ],
+      'Free Francistown pickups and nationwide courier delivery. Orange Money & FNB Pay2Cell accepted.',
+    images: ['/products/rouge-1.jpg'],
   },
   robots: {
     index: true,
     follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 },
   },
 };
 
@@ -85,24 +67,26 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: '#07080c',
+  colorScheme: 'dark',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={jakarta.variable}>
+    <html lang="en-BW" className="scroll-smooth">
       <head>
+        {/* Local catalog imagery is served from the same origin; remote CDNs are pre-warmed. */}
         <link rel="preconnect" href="https://images.unsplash.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://images.unsplash.com" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+        {/* The webfont stylesheet itself is injected after hydration by <FontLoader />. */}
       </head>
-      <body className="antialiased min-h-screen flex flex-col bg-[#07080c] text-white font-sans selection:bg-orangeMoney/30 selection:text-orangeMoney-light">
+
+      <body className="min-h-screen bg-midnight font-sans text-white antialiased selection:bg-orangeMoney/30 selection:text-orangeMoney-light">
+        <FontLoader />
         <ToastProvider>
-          <StoreProvider>
-            {children}
-          </StoreProvider>
+          <StoreProvider>{children}</StoreProvider>
         </ToastProvider>
       </body>
     </html>

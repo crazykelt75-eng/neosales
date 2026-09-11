@@ -1,433 +1,288 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Plus, AlertTriangle, Check, Search, Package, Sparkles, X } from 'lucide-react';
-import { Product, ProductCategory, ProductVariant } from '@/types';
+import React, { useMemo, useState } from 'react';
+import { AlertTriangle, Minus, Package, Plus, Search, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
-import { useToast } from '@/components/ui/Toast';
-import { Button } from '@/components/ui/Button';
+import { ProductCategory } from '@/types';
 import { Badge } from '@/components/ui/Badge';
+import { formatBWP } from '@/lib/format';
+import { getOptimizedImageUrl } from '@/lib/imageUtils';
+import { getVariantLabel } from '@/lib/product';
 
+type StockFilter = 'all' | 'low' | 'out';
+
+/** Searchable inventory table with inline stock adjusters and publish toggles. */
 export function InventoryManager() {
-  const { products, addProduct, updateVariantStock } = useStore();
-  const { showToast } = useToast();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const { products, adjustVariantStock, setVariantStock, toggleProductActive } = useStore();
 
-  // Quick-Add Form State
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<ProductCategory>('perfumes');
-  const [description, setDescription] = useState('');
-  const [basePrice, setBasePrice] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [isNewArrival, setIsNewArrival] = useState(true);
-  const [variantsList, setVariantsList] = useState<
-    { label: string; price: string; quantity: string }[]
-  >([
-    { label: '30ml', price: '280', quantity: '10' },
-    { label: '50ml', price: '420', quantity: '5' },
-  ]);
+  const [query, setQuery] = useState('');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<ProductCategory | 'all'>('all');
 
-  // Escape key for modal
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsAddModalOpen(false);
-    };
-    if (isAddModalOpen) window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAddModalOpen]);
+  const visibleProducts = useMemo(() => {
+    const needle = query.trim().toLowerCase();
 
-  const handleCategoryChange = (cat: ProductCategory) => {
-    setCategory(cat);
-    if (cat === 'perfumes') {
-      setVariantsList([
-        { label: '30ml', price: '280', quantity: '10' },
-        { label: '50ml', price: '420', quantity: '5' },
-      ]);
-    } else if (cat === 'clothes') {
-      setVariantsList([
-        { label: 'Size S', price: '350', quantity: '5' },
-        { label: 'Size M', price: '350', quantity: '8' },
-        { label: 'Size L', price: '350', quantity: '4' },
-      ]);
-    } else {
-      setVariantsList([{ label: 'Standard', price: '190', quantity: '10' }]);
-    }
-  };
+    return products.filter((product) => {
+      if (categoryFilter !== 'all' && product.category !== categoryFilter) return false;
 
-  const handleCreateProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !basePrice) return;
+      if (stockFilter !== 'all') {
+        const flags = product.variants.map((variant) => ({
+          low: variant.stockQuantity > 0 && variant.stockQuantity <= variant.lowStockThreshold,
+          out: variant.stockQuantity === 0,
+        }));
 
-    const parsedBasePrice = parseFloat(basePrice) || 200;
-    const slug =
-      title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now().toString().slice(-4);
+        if (stockFilter === 'low' && !flags.some((flag) => flag.low)) return false;
+        if (stockFilter === 'out' && !flags.some((flag) => flag.out)) return false;
+      }
 
-    const generatedVariants: ProductVariant[] = variantsList.map((v, idx) => {
-      const volMatch = v.label.match(/(\d+)\s*ml/i);
-      const sizeMatch = v.label.match(/size\s*([a-z0-9]+)/i);
+      if (!needle) return true;
 
-      return {
-        id: `var-${Date.now()}-${idx}`,
-        productId: '',
-        sku: `${slug.toUpperCase()}-${idx + 1}`,
-        volumeMl: volMatch ? parseInt(volMatch[1], 10) : undefined,
-        size: sizeMatch ? sizeMatch[1].toUpperCase() : undefined,
-        scentProfile: category === 'perfumes' ? 'Curated Niche Extract' : undefined,
-        priceBWP: parseFloat(v.price) || parsedBasePrice,
-        stockQuantity: parseInt(v.quantity, 10) || 0,
-        lowStockThreshold: 2,
-      };
+      return (
+        product.title.toLowerCase().includes(needle) ||
+        product.slug.toLowerCase().includes(needle) ||
+        product.variants.some(
+          (variant) =>
+            variant.sku.toLowerCase().includes(needle) ||
+            (variant.size ?? '').toLowerCase().includes(needle) ||
+            (variant.color ?? '').toLowerCase().includes(needle) ||
+            (variant.scentProfile ?? '').toLowerCase().includes(needle)
+        )
+      );
     });
+  }, [categoryFilter, products, query, stockFilter]);
 
-    addProduct({
-      title: title.trim(),
-      slug,
-      category,
-      description: description.trim() || 'Imported luxury quality.',
-      basePriceBWP: parsedBasePrice,
-      isActive: true,
-      isNewArrival,
-      imageUrls: [
-        imageUrl.trim() ||
-          (category === 'perfumes'
-            ? 'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=800&auto=format&fit=crop&q=80'
-            : 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&auto=format&fit=crop&q=80'),
-      ],
-      variants: generatedVariants,
-    });
-
-    showToast({
-      type: 'success',
-      title: 'Product Published',
-      description: `"${title.trim()}" has been published with ${generatedVariants.length} variants.`,
-    });
-
-    // Reset Form
-    setTitle('');
-    setDescription('');
-    setBasePrice('');
-    setImageUrl('');
-    setIsAddModalOpen(false);
-  };
-
-  const handleStockUpdate = (productId: string, variantId: string, qty: number) => {
-    updateVariantStock(productId, variantId, qty);
-  };
-
-  const filteredProducts = products.filter((p) =>
-    p.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalVariants = products.reduce((sum, product) => sum + product.variants.length, 0);
 
   return (
-    <div className="space-y-5">
-      {/* Action Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-white p-4 rounded-2xl border border-neutral-200/90 shadow-soft">
-        <div className="relative w-full sm:w-80">
-          <Search size={16} className="absolute left-3.5 top-3 text-neutral-400" aria-hidden="true" />
-          <input
-            type="text"
-            placeholder="Search catalog inventory..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            aria-label="Search catalog inventory"
-            className="w-full pl-10 pr-3 py-2 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-900 min-h-[40px]"
+    <section aria-label="Inventory manager" className="space-y-4">
+      {/* Filters */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-surface/70 p-3.5 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
+            aria-hidden="true"
           />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by SKU, product title, size or colour…"
+            aria-label="Search inventory by SKU or product title"
+            className="w-full rounded-xl border border-white/12 bg-black/30 py-2.5 pl-10 pr-10 text-sm text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Clear inventory search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-neutral-400 transition-colors hover:text-white"
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          )}
         </div>
 
-        <Button
-          variant="primary"
-          size="md"
-          onClick={() => setIsAddModalOpen(true)}
-          className="w-full sm:w-auto"
-          leftIcon={<Plus size={16} aria-hidden="true" />}
-        >
-          Quick-Add New Arrival
-        </Button>
-      </div>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by stock level">
+          {(
+            [
+              { id: 'all', label: `All (${totalVariants})` },
+              { id: 'low', label: 'Low stock' },
+              { id: 'out', label: 'Sold out' },
+            ] as { id: StockFilter; label: string }[]
+          ).map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setStockFilter(filter.id)}
+              aria-pressed={stockFilter === filter.id}
+              className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wide transition-colors ${
+                stockFilter === filter.id
+                  ? 'border-orangeMoney/50 bg-orangeMoney/15 text-white'
+                  : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Inventory Table Container */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl border border-neutral-200/90 overflow-hidden shadow-soft">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-neutral-700" aria-label="Product Inventory Table">
-            <thead className="bg-neutral-50 border-b border-neutral-200 text-[11px] font-black text-neutral-600 uppercase tracking-wider">
-              <tr>
-                <th scope="col" className="p-4">Product Details</th>
-                <th scope="col" className="p-4">Category</th>
-                <th scope="col" className="p-4">Base Price</th>
-                <th scope="col" className="p-4">Variant Stock (Live Editable)</th>
-                <th scope="col" className="p-4 text-right">Catalog Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 font-medium">
-              {filteredProducts.map((product) => {
-                const totalStock = product.variants.reduce((acc, v) => acc + v.stockQuantity, 0);
-
-                return (
-                  <tr key={product.id} className="hover:bg-neutral-50/80 transition-colors">
-                    <td className="p-4 flex items-center gap-3">
-                      <img
-                        src={product.imageUrls[0]}
-                        alt=""
-                        aria-hidden="true"
-                        className="w-12 h-12 rounded-xl object-cover bg-neutral-100 flex-shrink-0 border border-neutral-200"
-                      />
-                      <div>
-                        <p className="font-extrabold text-neutral-900 text-xs sm:text-sm">{product.title}</p>
-                        <p className="text-[11px] text-neutral-600 line-clamp-1 mt-0.5">
-                          {product.description}
-                        </p>
-                      </div>
-                    </td>
-
-                    <td className="p-4">
-                      <Badge variant="category">{product.category}</Badge>
-                    </td>
-
-                    <td className="p-4 font-black text-neutral-950 font-mono text-sm">
-                      P{product.basePriceBWP}
-                    </td>
-
-                    {/* Variants and In-line Stock Editor */}
-                    <td className="p-4">
-                      <div className="flex flex-wrap gap-2">
-                        {product.variants.map((v) => (
-                          <div
-                            key={v.id}
-                            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-[11px] ${
-                              v.stockQuantity === 0
-                                ? 'bg-red-50 border-red-200 text-red-700 font-bold'
-                                : v.stockQuantity <= 2
-                                ? 'bg-amber-50 border-amber-200 text-amber-900 font-semibold'
-                                : 'bg-neutral-50 border-neutral-200 text-neutral-800'
-                            }`}
-                          >
-                            <span className="font-bold">
-                              {v.volumeMl ? `${v.volumeMl}ml` : v.size ? `Size ${v.size}` : v.color || 'Var'}
-                            </span>
-                            <span className="text-neutral-400" aria-hidden="true">|</span>
-                            <div className="flex items-center gap-1.5">
-                              <label htmlFor={`stock-${v.id}`} className="text-[10px] text-neutral-600 uppercase font-mono">
-                                Qty:
-                              </label>
-                              <input
-                                id={`stock-${v.id}`}
-                                type="number"
-                                min="0"
-                                value={v.stockQuantity}
-                                onChange={(e) =>
-                                  handleStockUpdate(
-                                    product.id,
-                                    v.id,
-                                    parseInt(e.target.value, 10) || 0
-                                  )
-                                }
-                                aria-label={`Stock quantity for ${v.volumeMl ? `${v.volumeMl}ml` : v.size || 'variant'}`}
-                                className="w-14 px-1.5 py-0.5 bg-white border border-neutral-300 rounded-lg font-mono font-black text-center text-xs text-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-
-                    <td className="p-4 text-right">
-                      {totalStock === 0 ? (
-                        <Badge variant="soldOut">Sold Out</Badge>
-                      ) : totalStock <= 3 ? (
-                        <Badge variant="lowStock" pulse>
-                          Low Stock ({totalStock})
-                        </Badge>
-                      ) : (
-                        <Badge variant="success">{totalStock} Available</Badge>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by category">
+          {(
+            [
+              { id: 'all', label: 'All categories' },
+              { id: 'perfumes', label: 'Perfumes' },
+              { id: 'clothes', label: 'Apparel' },
+              { id: 'accessories', label: 'Accessories' },
+            ] as { id: ProductCategory | 'all'; label: string }[]
+          ).map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setCategoryFilter(filter.id)}
+              aria-pressed={categoryFilter === filter.id}
+              className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wide transition-colors ${
+                categoryFilter === filter.id
+                  ? 'border-orangeMoney/50 bg-orangeMoney/15 text-white'
+                  : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Quick-Add Product Modal */}
-      {isAddModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-modal-heading"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
-        >
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 overflow-hidden shadow-elevated space-y-4 max-h-[90vh] overflow-y-auto animate-scaleIn">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
-              <h3 id="add-modal-heading" className="font-extrabold text-base sm:text-lg text-neutral-900">
-                Quick-Add Product or Stock Batch
-              </h3>
-              <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="p-1 text-neutral-400 hover:text-neutral-700 rounded-lg"
-                aria-label="Close add product modal"
-              >
-                <X size={20} />
-              </button>
-            </div>
+      {visibleProducts.length === 0 ? (
+        <p className="rounded-2xl border border-white/10 bg-surface/70 p-6 text-center text-xs text-neutral-400">
+          No products match this search. Try a different SKU or clear the filters.
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {visibleProducts.map((product) => {
+            const productStock = product.variants.reduce((sum, variant) => sum + variant.stockQuantity, 0);
 
-            <form onSubmit={handleCreateProduct} className="space-y-3.5 text-left">
-              <div>
-                <label className="text-xs font-bold text-neutral-800 block mb-1">
-                  Product Title <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Delina Rose Extrait or Bohemian Linen Crop"
-                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-950"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-neutral-800 block mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => handleCategoryChange(e.target.value as ProductCategory)}
-                    className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-950"
-                  >
-                    <option value="perfumes">Perfumes</option>
-                    <option value="clothes">Clothes</option>
-                    <option value="accessories">Accessories</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-neutral-800 block mb-1">
-                    Base Price (BWP)
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={basePrice}
-                    onChange={(e) => setBasePrice(e.target.value)}
-                    placeholder="e.g. 350"
-                    className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-950"
+            return (
+              <li key={product.id} className="rounded-2xl border border-white/10 bg-surface/70 p-3.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <img
+                    src={getOptimizedImageUrl(product.imageUrls[0], 160)}
+                    alt=""
+                    width={56}
+                    height={70}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-[70px] w-[56px] flex-shrink-0 rounded-xl border border-white/10 object-cover"
                   />
-                </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-bold text-neutral-800 block mb-1">
-                  Image URL (Unsplash or Supabase)
-                </label>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-950"
-                />
-              </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-bold text-white">{product.title}</h3>
+                      <Badge variant={product.isActive ? 'success' : 'soldOut'} icon={null} className="text-[10px]">
+                        {product.isActive ? 'Live' : 'Hidden'}
+                      </Badge>
+                      <span className="font-mono text-2xs text-neutral-400">{productStock} units on hand</span>
+                    </div>
 
-              <div>
-                <label className="text-xs font-bold text-neutral-800 block mb-1">
-                  Short Description
-                </label>
-                <textarea
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Key scents, fabrics, fit notes..."
-                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs sm:text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-950"
-                />
-              </div>
+                    <p className="mt-1 text-2xs uppercase tracking-wide text-neutral-400">
+                      {product.category} · {formatBWP(product.basePriceBWP)} base
+                    </p>
+                  </div>
 
-              {/* Dynamic Variants Setup */}
-              <div className="space-y-2.5 pt-2 border-t border-neutral-100">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-extrabold text-neutral-900">
-                    Variants & Initial Stock
-                  </label>
+                  {/* Publish toggle (native switch semantics) */}
                   <button
                     type="button"
-                    onClick={() =>
-                      setVariantsList([
-                        ...variantsList,
-                        { label: 'New Option', price: basePrice || '280', quantity: '5' },
-                      ])
-                    }
-                    className="text-xs font-bold text-orangeMoney hover:underline"
+                    role="switch"
+                    aria-checked={product.isActive}
+                    onClick={() => toggleProductActive(product.id)}
+                    aria-label={`${product.isActive ? 'Hide' : 'Publish'} ${product.title}`}
+                    className={`inline-flex min-h-[40px] flex-shrink-0 items-center gap-2 rounded-xl border px-3 text-2xs font-bold uppercase tracking-wide transition-colors ${
+                      product.isActive
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                        : 'border-white/12 bg-white/[0.04] text-neutral-300'
+                    }`}
                   >
-                    + Add Option
+                    <span
+                      aria-hidden="true"
+                      className={`relative h-4 w-8 rounded-full transition-colors ${
+                        product.isActive ? 'bg-emerald-500/70' : 'bg-white/20'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
+                          product.isActive ? 'left-4' : 'left-0.5'
+                        }`}
+                      />
+                    </span>
+                    {product.isActive ? 'Published' : 'Hidden'}
                   </button>
                 </div>
 
-                <div className="space-y-2">
-                  {variantsList.map((v, i) => (
-                    <div key={i} className="grid grid-cols-3 gap-2">
-                      <input
-                        type="text"
-                        value={v.label}
-                        onChange={(e) => {
-                          const updated = [...variantsList];
-                          updated[i].label = e.target.value;
-                          setVariantsList(updated);
-                        }}
-                        placeholder="Option label"
-                        className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
-                      />
-                      <input
-                        type="number"
-                        value={v.price}
-                        onChange={(e) => {
-                          const updated = [...variantsList];
-                          updated[i].price = e.target.value;
-                          setVariantsList(updated);
-                        }}
-                        placeholder="Price BWP"
-                        className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
-                      />
-                      <input
-                        type="number"
-                        value={v.quantity}
-                        onChange={(e) => {
-                          const updated = [...variantsList];
-                          updated[i].quantity = e.target.value;
-                          setVariantsList(updated);
-                        }}
-                        placeholder="Qty"
-                        className="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
+                {/* Variant stock rows */}
+                <ul className="mt-3 space-y-2 border-t border-white/[0.07] pt-3">
+                  {product.variants.map((variant) => {
+                    const isOut = variant.stockQuantity === 0;
+                    const isLow = !isOut && variant.stockQuantity <= variant.lowStockThreshold;
 
-              <div className="pt-3 flex gap-2.5">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="md"
-                  className="flex-1"
-                >
-                  Publish to Catalog
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+                    return (
+                      <li
+                        key={variant.id}
+                        className="flex flex-col gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-100">
+                            {getVariantLabel(variant)}
+                            {isOut && <Badge variant="soldOut" icon={null} className="text-[10px]">Sold out</Badge>}
+                            {isLow && (
+                              <Badge variant="lowStock" className="text-[10px]">
+                                <AlertTriangle size={10} aria-hidden="true" />
+                                Low
+                              </Badge>
+                            )}
+                          </p>
+                          <p className="mt-0.5 font-mono text-2xs text-neutral-400">
+                            {variant.sku} · {formatBWP(variant.priceBWP)} · threshold {variant.lowStockThreshold}
+                          </p>
+                        </div>
+
+                        <div
+                          role="group"
+                          aria-label={`Adjust stock for ${getVariantLabel(variant)}`}
+                          className="flex flex-shrink-0 items-center gap-1.5"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => adjustVariantStock(product.id, variant.id, -1)}
+                            disabled={variant.stockQuantity === 0}
+                            aria-label={`Decrease stock for ${getVariantLabel(variant)}`}
+                            className="rounded-lg border border-white/12 bg-white/[0.05] p-2 text-neutral-200 transition-colors hover:bg-white/[0.12] disabled:opacity-30"
+                          >
+                            <Minus size={13} aria-hidden="true" />
+                          </button>
+
+                          <input
+                            type="number"
+                            min={0}
+                            value={variant.stockQuantity}
+                            onChange={(event) =>
+                              setVariantStock(product.id, variant.id, Number(event.target.value))
+                            }
+                            aria-label={`Stock quantity for ${getVariantLabel(variant)}`}
+                            className="w-16 rounded-lg border border-white/12 bg-black/40 px-2 py-2 text-center font-mono text-xs font-bold text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => adjustVariantStock(product.id, variant.id, 1)}
+                            aria-label={`Increase stock for ${getVariantLabel(variant)}`}
+                            className="rounded-lg border border-white/12 bg-white/[0.05] p-2 text-neutral-200 transition-colors hover:bg-white/[0.12]"
+                          >
+                            <Plus size={13} aria-hidden="true" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => adjustVariantStock(product.id, variant.id, 10)}
+                            aria-label={`Add ten units to ${getVariantLabel(variant)}`}
+                            className="hidden rounded-lg border border-white/12 bg-white/[0.05] px-2 py-2 font-mono text-2xs font-bold text-neutral-200 transition-colors hover:bg-white/[0.12] sm:inline-flex"
+                          >
+                            +10
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </div>
+
+      <p className="flex items-center gap-2 text-2xs text-neutral-400">
+        <Package size={13} aria-hidden="true" />
+        Stock changes save instantly to local storage and sync to Supabase when cloud persistence is configured.
+      </p>
+    </section>
   );
 }

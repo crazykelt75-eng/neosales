@@ -1,574 +1,750 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Product, ProductVariant, CartItem, Order, OrderStatus, StoreMetrics, CustomerInput, PaymentMethod } from '@/types';
-import { INITIAL_PRODUCTS, INITIAL_ORDERS } from '@/lib/mockData';
-import { DELIVERY_OPTIONS_LABELS } from '@/lib/whatsapp';
-import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
-import { getOptimizedImageUrl } from '@/lib/imageUtils';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  CartItem,
+  CustomerReview,
+  DeliveryPreference,
+  Order,
+  OrderCustomer,
+  OrderStatus,
+  PaymentMethod,
+  Product,
+  ProductVariant,
+  StoreMetrics,
+} from '@/types';
+import { CUSTOMER_REVIEWS, INITIAL_ORDERS, INITIAL_PRODUCTS } from '@/lib/mockData';
+import { DELIVERY_OPTIONS_BY_ID } from '@/lib/constants';
+import { STORAGE_KEYS, clearStorefrontCache, readStorage, removeStorage, writeStorage } from '@/lib/storage';
+import { generateOrderNumber } from '@/lib/whatsapp';
+import { findVariant, getCartCount, getCartSubtotal, getVariantLabel } from '@/lib/product';
+import {
+  fetchLiveOrders,
+  fetchLiveProducts,
+  isSupabaseConfigured,
+  persistOrder,
+  syncOrderStatus,
+  syncVariantStock,
+} from '@/lib/supabaseClient';
+import { useToast } from '@/components/ui/Toast';
 
-interface StoreContextType {
-  // Products
+/** PIN protecting `/admin`; overridable per deployment. */
+const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || '2670';
+const MAX_ADMIN_ATTEMPTS = 5;
+const ADMIN_LOCKOUT_MS = 60_000;
+
+interface AdminAttemptState {
+  attempts: number;
+  lockedUntil: number | null;
+}
+
+interface CheckoutInput {
+  customer: OrderCustomer;
+  paymentMethod: PaymentMethod;
+}
+
+interface StoreContextValue {
+  // Catalog
   products: Product[];
-  addProduct: (product: Omit<Product, 'id'>) => void;
-  updateVariantStock: (productId: string, variantId: string, newStock: number) => void;
+  reviews: CustomerReview[];
+  getProductReviews: (productId: string) => CustomerReview[];
+  getProductRating: (productId: string) => { average: number; count: number };
 
-  // Cart
+  // Bag
   cart: CartItem[];
-  addToCart: (product: Product, variant: ProductVariant, quantity?: number) => void;
-  removeFromCart: (variantId: string) => void;
-  updateCartQuantity: (variantId: string, delta: number) => void;
-  clearCart: () => void;
   cartCount: number;
   cartSubtotal: number;
-  isCartOpen: boolean;
-  setIsCartOpen: (open: boolean) => void;
+  addToCart: (product: Product, variant: ProductVariant, quantity?: number) => void;
+  setCartQuantity: (variantId: string, quantity: number) => void;
+  incrementCartItem: (variantId: string) => void;
+  decrementCartItem: (variantId: string) => void;
+  removeFromCart: (variantId: string) => void;
+  clearCart: () => void;
 
-  // Checkout & Orders
+  // Checkout & orders
   orders: Order[];
-  createOrder: (customer: CustomerInput, paymentMethod: PaymentMethod, proofUrl?: string) => Order;
-  updateOrderStatus: (orderId: string, newStatus: OrderStatus, notes?: string) => void;
-  verifyPayment: (orderId: string, notes?: string) => void;
+  createOrder: (input: CheckoutInput) => Order;
+  updateOrderStatus: (orderId: string, status: OrderStatus, notes?: string) => void;
+  selectedDelivery: DeliveryPreference;
+  setSelectedDelivery: (preference: DeliveryPreference) => void;
 
-  // Business Config
-  sellerConfig: {
-    storeName: string;
-    hubLocation: string;
-    sellerWhatsApp: string;
-    orangeMoneyNumber: string;
-    fnbPay2CellNumber: string;
-    fnbAccountName: string;
-  };
+  // Inventory / catalog management (admin)
+  addProduct: (product: Product) => void;
+  setVariantStock: (productId: string, variantId: string, stockQuantity: number) => void;
+  adjustVariantStock: (productId: string, variantId: string, delta: number) => void;
+  toggleProductActive: (productId: string) => void;
+  resetDemoData: () => void;
 
-  // Metrics
+  // Admin session
+  isAdminUnlocked: boolean;
+  adminAttemptsRemaining: number;
+  adminLockSecondsRemaining: number;
+  unlockAdmin: (pin: string) => { success: boolean; message: string };
+  lockAdmin: () => void;
+
+  // UI state
+  activeProduct: Product | null;
+  openProduct: (product: Product) => void;
+  closeProduct: () => void;
+  isCartOpen: boolean;
+  openCart: () => void;
+  closeCart: () => void;
+  isCheckoutOpen: boolean;
+  openCheckout: () => void;
+  closeCheckout: () => void;
+
+  // Diagnostics
+  hasHydrated: boolean;
+  isCloudSync: boolean;
   metrics: StoreMetrics;
-
-  // Modals
-  selectedProductForModal: Product | null;
-  setSelectedProductForModal: (product: Product | null) => void;
-  activeOrderForPayment: Order | null;
-  setActiveOrderForPayment: (order: Order | null) => void;
 }
 
-const StoreContext = createContext<StoreContextType | undefined>(undefined);
-
-const STORAGE_PRODUCTS_KEY = 'bw_store_products_v1';
-const STORAGE_ORDERS_KEY = 'bw_store_orders_v1';
-const STORAGE_CART_KEY = 'bw_store_cart_v1';
+const StoreContext = createContext<StoreContextValue | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { showToast } = useToast();
+
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [isCloudSync, setIsCloudSync] = useState(false);
+
+  const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedProductForModal, setSelectedProductForModal] = useState<Product | null>(null);
-  const [activeOrderForPayment, setActiveOrderForPayment] = useState<Order | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [selectedDelivery, setSelectedDelivery] = useState<DeliveryPreference>(
+    'francistown_pickup'
+  );
 
-  // Business Config defaults (can be overridden with env vars)
-  const sellerConfig = {
-    storeName: process.env.NEXT_PUBLIC_STORE_NAME || 'NeoSales',
-    hubLocation: 'Francistown & Tati Siding',
-    sellerWhatsApp: process.env.NEXT_PUBLIC_SELLER_WHATSAPP || '+26771550200',
-    orangeMoneyNumber: process.env.NEXT_PUBLIC_ORANGE_MONEY_NUMBER || '74453342',
-    fnbPay2CellNumber: process.env.NEXT_PUBLIC_FNB_PAY2CELL_NUMBER || '71550200',
-    fnbAccountName: process.env.NEXT_PUBLIC_FNB_ACCOUNT_NAME || 'NeoSales Retail',
-  };
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [attemptState, setAttemptState] = useState<AdminAttemptState>({ attempts: 0, lockedUntil: null });
+  const [lockSecondsRemaining, setLockSecondsRemaining] = useState(0);
 
-  // Load from localStorage & Supabase on client mount
+  // Latest-state mirrors let mutators write to storage without stale closures.
+  const productsRef = useRef(products);
+  const cartRef = useRef(cart);
+  const ordersRef = useRef(orders);
+
   useEffect(() => {
-    try {
-      const savedProducts = localStorage.getItem(STORAGE_PRODUCTS_KEY);
-      if (savedProducts) {
-        const parsed: Product[] = JSON.parse(savedProducts);
-        const sanitized = parsed.map((p) => ({
-          ...p,
-          imageUrls: (p.imageUrls || []).map((url) => getOptimizedImageUrl(url)),
-        }));
-        setProducts(sanitized);
-      }
+    productsRef.current = products;
+  }, [products]);
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
 
-      const savedOrders = localStorage.getItem(STORAGE_ORDERS_KEY);
-      if (savedOrders) setOrders(JSON.parse(savedOrders));
+  /* ------------------------------------------------------------------ *
+   * Committers — always persist to storage alongside React state.
+   * ------------------------------------------------------------------ */
 
-      const savedCart = localStorage.getItem(STORAGE_CART_KEY);
-      if (savedCart) setCart(JSON.parse(savedCart));
-    } catch {
-      // Graceful fallback to initial mock data
-    }
-
-    // Live Supabase integration
-    if (isSupabaseConfigured() && supabase) {
-      const client = supabase;
-      client
-        .from('products')
-        .select(`
-          id,
-          title,
-          slug,
-          category,
-          description,
-          base_price_bwp,
-          is_active,
-          is_new_arrival,
-          image_urls,
-          featured_tag,
-          product_variants (
-            id,
-            product_id,
-            sku,
-            size,
-            color,
-            volume_ml,
-            scent_profile,
-            price_bwp,
-            stock_quantity,
-            low_stock_threshold
-          )
-        `)
-        .eq('is_active', true)
-        .then(({ data, error }) => {
-          if (!error && data && data.length > 0) {
-            const mapped: Product[] = (data as any[]).map((p) => ({
-              id: p.id,
-              title: p.title,
-              slug: p.slug,
-              category: p.category,
-              description: p.description,
-              basePriceBWP: Number(p.base_price_bwp),
-              isActive: p.is_active,
-              isNewArrival: p.is_new_arrival,
-              imageUrls: (p.image_urls || []).map((url: string) => getOptimizedImageUrl(url)),
-              featuredTag: p.featured_tag,
-              variants: (p.product_variants || []).map((v: any) => ({
-                id: v.id,
-                productId: v.product_id,
-                sku: v.sku,
-                size: v.size,
-                color: v.color,
-                volumeMl: v.volume_ml,
-                scentProfile: v.scent_profile,
-                priceBWP: Number(v.price_bwp),
-                stockQuantity: v.stock_quantity,
-                lowStockThreshold: v.low_stock_threshold,
-              })),
-            }));
-            setProducts(mapped);
-            persistProducts(mapped);
-          }
-        });
-
-      // Fetch live orders
-      client
-        .from('orders')
-        .select(`
-          id,
-          order_number,
-          customer_name,
-          customer_phone,
-          delivery_preference,
-          delivery_location,
-          payment_method,
-          subtotal_bwp,
-          delivery_fee_bwp,
-          total_amount_bwp,
-          status,
-          payment_proof_url,
-          verification_notes,
-          verified_at,
-          created_at,
-          order_items (
-            id,
-            variant_id,
-            product_title_snapshot,
-            variant_label_snapshot,
-            unit_price_bwp,
-            quantity,
-            line_total_bwp
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .then(({ data, error }) => {
-          if (!error && data && data.length > 0) {
-            const mappedOrders: Order[] = (data as any[]).map((o) => {
-              const locationParts = (o.delivery_location || '').split(' - ');
-              return {
-                id: o.id,
-                orderNumber: o.order_number,
-                customer: {
-                  fullName: o.customer_name,
-                  phone: o.customer_phone,
-                  deliveryTown: locationParts[0] || 'Francistown',
-                  deliveryAddress: locationParts.slice(1).join(' - ') || o.delivery_location || '',
-                  deliveryPreference: o.delivery_preference,
-                },
-                items: (o.order_items || []).map((it: any) => ({
-                  variantId: it.variant_id || 'var-1',
-                  productTitle: it.product_title_snapshot,
-                  variantLabel: it.variant_label_snapshot,
-                  unitPriceBWP: Number(it.unit_price_bwp),
-                  quantity: it.quantity,
-                  lineTotalBWP: Number(it.line_total_bwp),
-                })),
-                subtotalBWP: Number(o.subtotal_bwp),
-                deliveryFeeBWP: Number(o.delivery_fee_bwp),
-                totalAmountBWP: Number(o.total_amount_bwp),
-                paymentMethod: o.payment_method,
-                status: o.status,
-                paymentProofUrl: o.payment_proof_url,
-                verificationNotes: o.verification_notes,
-                verifiedAt: o.verified_at,
-                createdAt: o.created_at,
-              };
-            });
-            setOrders(mappedOrders);
-            persistOrders(mappedOrders);
-          }
-        });
-    }
+  const commitProducts = useCallback((next: Product[]) => {
+    productsRef.current = next;
+    setProducts(next);
+    writeStorage(STORAGE_KEYS.products, next);
   }, []);
 
-  // Save changes to localStorage
-  const persistProducts = (updated: Product[]) => {
-    setProducts(updated);
-    try {
-      localStorage.setItem(STORAGE_PRODUCTS_KEY, JSON.stringify(updated));
-    } catch {
-      // Fallback if storage quota is exceeded or unavailable
-    }
-  };
+  const commitCart = useCallback((next: CartItem[]) => {
+    cartRef.current = next;
+    setCart(next);
+    writeStorage(STORAGE_KEYS.cart, next);
+  }, []);
 
-  const persistOrders = (updated: Order[]) => {
-    setOrders(updated);
-    try {
-      localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(updated));
-    } catch {
-      // Fallback if storage quota is exceeded or unavailable
-    }
-  };
+  const commitOrders = useCallback((next: Order[]) => {
+    ordersRef.current = next;
+    setOrders(next);
+    writeStorage(STORAGE_KEYS.orders, next);
+  }, []);
 
-  const persistCart = (updated: CartItem[]) => {
-    setCart(updated);
-    try {
-      localStorage.setItem(STORAGE_CART_KEY, JSON.stringify(updated));
-    } catch {
-      // Fallback if storage quota is exceeded or unavailable
-    }
-  };
+  /* ------------------------------------------------------------------ *
+   * Hydration: localStorage first (instant, offline-safe) then Supabase.
+   * ------------------------------------------------------------------ */
 
-  // Add to cart
-  const addToCart = (product: Product, variant: ProductVariant, quantity: number = 1) => {
-    let label = '';
-    if (variant.size) {
-      label = `Size ${variant.size}${variant.color ? ` / ${variant.color}` : ''}`;
-    } else if (variant.volumeMl) {
-      label = `${variant.volumeMl}ml${variant.scentProfile ? ` (${variant.scentProfile})` : ''}`;
-    } else if (variant.color) {
-      label = variant.color;
-    } else {
-      label = 'Standard';
-    }
+  useEffect(() => {
+    const storedProducts = readStorage<Product[]>(STORAGE_KEYS.products, []);
+    const hydratedProducts = storedProducts.length > 0 ? storedProducts : INITIAL_PRODUCTS;
+    setProducts(hydratedProducts);
+    productsRef.current = hydratedProducts;
 
-    const existingIndex = cart.findIndex((item) => item.variantId === variant.id);
-    let newCart: CartItem[];
+    const storedOrders = readStorage<Order[]>(STORAGE_KEYS.orders, []);
+    const hydratedOrders = storedOrders.length > 0 ? storedOrders : INITIAL_ORDERS;
+    setOrders(hydratedOrders);
+    ordersRef.current = hydratedOrders;
 
-    if (existingIndex > -1) {
-      newCart = [...cart];
-      newCart[existingIndex].quantity += quantity;
-    } else {
-      newCart = [
-        ...cart,
-        {
-          variantId: variant.id,
-          product,
-          variant,
-          quantity,
-          variantLabel: label,
-        },
-      ];
-    }
-    persistCart(newCart);
-    setIsCartOpen(true);
-  };
+    // Reconcile the persisted bag against live catalog data (prices may have moved).
+    const storedCart = readStorage<CartItem[]>(STORAGE_KEYS.cart, []);
+    const reconciledCart = storedCart.reduce<CartItem[]>((acc, item) => {
+      const product = hydratedProducts.find((candidate) => candidate.id === item.product.id);
+      const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
+      if (!product || !variant) return acc;
 
-  const removeFromCart = (variantId: string) => {
-    persistCart(cart.filter((item) => item.variantId !== variantId));
-  };
-
-  const updateCartQuantity = (variantId: string, delta: number) => {
-    const updated = cart
-      .map((item) => {
-        if (item.variantId === variantId) {
-          const newQty = item.quantity + delta;
-          return newQty > 0 ? { ...item, quantity: newQty } : null;
-        }
-        return item;
-      })
-      .filter(Boolean) as CartItem[];
-    persistCart(updated);
-  };
-
-  const clearCart = () => {
-    persistCart([]);
-  };
-
-  const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const cartSubtotal = cart.reduce(
-    (total, item) => total + item.variant.priceBWP * item.quantity,
-    0
-  );
-
-  // Create Order
-  const createOrder = (
-    customer: CustomerInput,
-    paymentMethod: PaymentMethod,
-    proofUrl?: string
-  ): Order => {
-    const deliveryFee = DELIVERY_OPTIONS_LABELS[customer.deliveryPreference].fee;
-    const subtotal = cartSubtotal;
-    const total = subtotal + deliveryFee;
-
-    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber,
-      customer,
-      items: cart.map((item) => ({
-        id: `item-${Date.now()}-${item.variantId}`,
-        productId: item.product.id,
-        variantId: item.variant.id,
-        productTitle: item.product.title,
-        variantLabel: item.variantLabel,
-        unitPriceBWP: item.variant.priceBWP,
-        quantity: item.quantity,
-        lineTotalBWP: item.variant.priceBWP * item.quantity,
-      })),
-      subtotalBWP: subtotal,
-      deliveryFeeBWP: deliveryFee,
-      totalAmountBWP: total,
-      paymentMethod,
-      status: 'pending_verification',
-      paymentProofUrl: proofUrl,
-      createdAt: new Date().toISOString(),
-    };
-
-    const updatedOrders = [newOrder, ...orders];
-    persistOrders(updatedOrders);
-    clearCart();
-
-    // Async write to Supabase orders & order_items
-    if (isSupabaseConfigured() && supabase) {
-      const client = supabase;
-      client
-        .from('orders')
-        .insert({
-          order_number: newOrder.orderNumber,
-          customer_name: newOrder.customer.fullName,
-          customer_phone: newOrder.customer.phone,
-          delivery_preference: newOrder.customer.deliveryPreference,
-          delivery_location: `${newOrder.customer.deliveryTown} - ${newOrder.customer.deliveryAddress}`,
-          payment_method: newOrder.paymentMethod,
-          subtotal_bwp: newOrder.subtotalBWP,
-          delivery_fee_bwp: newOrder.deliveryFeeBWP,
-          total_amount_bwp: newOrder.totalAmountBWP,
-          status: newOrder.status,
-        })
-        .select('id')
-        .single()
-        .then(({ data, error }) => {
-          if (!error && data) {
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            const itemsToInsert = newOrder.items.map((it) => ({
-              order_id: data.id,
-              variant_id: uuidRegex.test(it.variantId) ? it.variantId : null,
-              product_title_snapshot: it.productTitle,
-              variant_label_snapshot: it.variantLabel,
-              unit_price_bwp: it.unitPriceBWP,
-              quantity: it.quantity,
-              line_total_bwp: it.lineTotalBWP,
-            }));
-            client.from('order_items').insert(itemsToInsert).then(() => {});
-          }
-        });
-    }
-
-    return newOrder;
-  };
-
-  // Update order status
-  const updateOrderStatus = (orderId: string, newStatus: OrderStatus, notes?: string) => {
-    const orderToUpdate = orders.find((o) => o.id === orderId);
-    if (!orderToUpdate) return;
-
-    // Handle inventory stock decrement if moving to payment_confirmed
-    if (newStatus === 'payment_confirmed' && orderToUpdate.status === 'pending_verification') {
-      decrementStockForOrder(orderToUpdate);
-    }
-
-    const updatedOrders = orders.map((order) => {
-      if (order.id === orderId) {
-        return {
-          ...order,
-          status: newStatus,
-          verificationNotes: notes || order.verificationNotes,
-          verifiedAt:
-            newStatus === 'payment_confirmed' && !order.verifiedAt
-              ? new Date().toISOString()
-              : order.verifiedAt,
-        };
-      }
-      return order;
-    });
-
-    persistOrders(updatedOrders);
-
-    // Sync status change to Supabase
-    if (isSupabaseConfigured() && supabase) {
-      const client = supabase;
-      const verifiedAtTimestamp =
-        newStatus === 'payment_confirmed' && !orderToUpdate.verifiedAt
-          ? new Date().toISOString()
-          : orderToUpdate.verifiedAt;
-
-      client
-        .from('orders')
-        .update({
-          status: newStatus,
-          verification_notes: notes || orderToUpdate.verificationNotes,
-          verified_at: verifiedAtTimestamp,
-        })
-        .eq('order_number', orderToUpdate.orderNumber)
-        .then(() => {});
-    }
-  };
-
-  // Decrement variant stock
-  const decrementStockForOrder = (order: Order) => {
-    const updatedProducts = products.map((prod) => {
-      const updatedVariants = prod.variants.map((v) => {
-        const matchingItem = order.items.find((item) => item.variantId === v.id);
-        if (matchingItem) {
-          const newStock = Math.max(0, v.stockQuantity - matchingItem.quantity);
-          return { ...v, stockQuantity: newStock };
-        }
-        return v;
+      acc.push({
+        ...item,
+        product,
+        quantity: Math.min(item.quantity, Math.max(variant.stockQuantity, 1)),
       });
-      return { ...prod, variants: updatedVariants };
+      return acc;
+    }, []);
+    setCart(reconciledCart);
+    cartRef.current = reconciledCart;
+
+    setHasHydrated(true);
+
+    if (!isSupabaseConfigured()) return;
+
+    // Live Supabase hydration runs after the cached first paint.
+    setIsCloudSync(true);
+    void fetchLiveProducts().then((liveProducts) => {
+      if (liveProducts?.length) commitProducts(liveProducts);
     });
-    persistProducts(updatedProducts);
-  };
+    void fetchLiveOrders().then((liveOrders) => {
+      if (liveOrders?.length) commitOrders(liveOrders);
+    });
+  }, [commitOrders, commitProducts]);
 
-  const verifyPayment = (orderId: string, notes?: string) => {
-    updateOrderStatus(orderId, 'payment_confirmed', notes || 'Payment verified against mobile wallet/bank remark.');
-  };
+  /* ------------------------------------------------------------------ *
+   * Admin session (sessionStorage — cleared when the tab closes)
+   * ------------------------------------------------------------------ */
 
-  // Add Product from Admin
-  const addProduct = (newProdData: Omit<Product, 'id'>) => {
-    const newProduct: Product = {
-      ...newProdData,
-      id: `prod-${Date.now()}`,
+  useEffect(() => {
+    const session = readStorage<{ unlockedAt: number } | null>(STORAGE_KEYS.adminSession, null, 'session');
+    const attempts = readStorage<AdminAttemptState>(STORAGE_KEYS.adminAttempts, { attempts: 0, lockedUntil: null }, 'session');
+
+    if (session) setIsAdminUnlocked(true);
+    setAttemptState(attempts);
+  }, []);
+
+  useEffect(() => {
+    if (!attemptState.lockedUntil) {
+      setLockSecondsRemaining(0);
+      return;
+    }
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((attemptState.lockedUntil! - Date.now()) / 1000));
+      setLockSecondsRemaining(remaining);
+      if (remaining === 0) {
+        const reset: AdminAttemptState = { attempts: 0, lockedUntil: null };
+        setAttemptState(reset);
+        writeStorage(STORAGE_KEYS.adminAttempts, reset, 'session');
+      }
     };
-    persistProducts([newProduct, ...products]);
-  };
 
-  // Update Variant Stock directly
-  const updateVariantStock = (productId: string, variantId: string, newStock: number) => {
-    const updated = products.map((p) => {
-      if (p.id === productId) {
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [attemptState.lockedUntil]);
+
+  const unlockAdmin = useCallback(
+    (pin: string): { success: boolean; message: string } => {
+      if (attemptState.lockedUntil && attemptState.lockedUntil > Date.now()) {
+        const seconds = Math.ceil((attemptState.lockedUntil - Date.now()) / 1000);
+        return { success: false, message: `Too many attempts. Try again in ${seconds}s.` };
+      }
+
+      if (pin.trim() !== ADMIN_PIN) {
+        const attempts = attemptState.attempts + 1;
+        const isLockedOut = attempts >= MAX_ADMIN_ATTEMPTS;
+        const nextState: AdminAttemptState = {
+          attempts: isLockedOut ? 0 : attempts,
+          lockedUntil: isLockedOut ? Date.now() + ADMIN_LOCKOUT_MS : null,
+        };
+
+        setAttemptState(nextState);
+        writeStorage(STORAGE_KEYS.adminAttempts, nextState, 'session');
+
         return {
-          ...p,
-          variants: p.variants.map((v) =>
-            v.id === variantId ? { ...v, stockQuantity: Math.max(0, newStock) } : v
-          ),
+          success: false,
+          message: isLockedOut
+            ? `Too many incorrect attempts. Locked for ${ADMIN_LOCKOUT_MS / 1000}s.`
+            : `Incorrect PIN. ${MAX_ADMIN_ATTEMPTS - attempts} attempt${
+                MAX_ADMIN_ATTEMPTS - attempts === 1 ? '' : 's'
+              } remaining.`,
         };
       }
-      return p;
-    });
-    persistProducts(updated);
-  };
 
-  // Calculate real-time metrics
-  const confirmedAndCompleted = orders.filter((o) =>
-    ['payment_confirmed', 'ready_for_pickup', 'out_for_delivery', 'completed'].includes(o.status)
+      const reset: AdminAttemptState = { attempts: 0, lockedUntil: null };
+      setAttemptState(reset);
+      writeStorage(STORAGE_KEYS.adminAttempts, reset, 'session');
+      writeStorage(STORAGE_KEYS.adminSession, { unlockedAt: Date.now() }, 'session');
+      setIsAdminUnlocked(true);
+
+      return { success: true, message: 'Dashboard unlocked.' };
+    },
+    [attemptState.attempts, attemptState.lockedUntil]
   );
 
-  const totalRevenueBWP = confirmedAndCompleted.reduce(
-    (sum, order) => sum + order.totalAmountBWP,
-    0
-  );
+  const lockAdmin = useCallback(() => {
+    removeStorage(STORAGE_KEYS.adminSession, 'session');
+    setIsAdminUnlocked(false);
+    showToast({ type: 'info', title: 'Admin session locked' });
+  }, [showToast]);
 
-  const scentCounts: Record<string, number> = {};
-  const sizeCounts: Record<string, number> = {};
+  /* ------------------------------------------------------------------ *
+   * Bag operations
+   * ------------------------------------------------------------------ */
 
-  orders.forEach((order) => {
-    order.items.forEach((item) => {
-      if (item.variantLabel.includes('ml')) {
-        // Perfume variant
-        const key = item.variantLabel;
-        scentCounts[key] = (scentCounts[key] || 0) + item.quantity;
+  const addToCart = useCallback(
+    (product: Product, variant: ProductVariant, quantity = 1) => {
+      if (variant.stockQuantity <= 0) {
+        showToast({
+          type: 'error',
+          title: 'Sold out',
+          description: `${product.title} (${getVariantLabel(variant)}) is out of stock.`,
+        });
+        return;
       }
-      if (item.variantLabel.includes('Size')) {
-        // Clothing variant
-        const key = item.variantLabel.split('/')[0].trim();
-        sizeCounts[key] = (sizeCounts[key] || 0) + item.quantity;
+
+      const existing = cartRef.current.find((item) => item.variantId === variant.id);
+      const alreadyInBag = existing?.quantity ?? 0;
+      const nextQuantity = Math.min(alreadyInBag + quantity, variant.stockQuantity);
+
+      if (nextQuantity === alreadyInBag) {
+        showToast({
+          type: 'info',
+          title: 'Stock limit reached',
+          description: `Only ${variant.stockQuantity} available for this option.`,
+        });
+        return;
       }
-    });
-  });
 
-  const topScents = Object.entries(scentCounts)
-    .map(([scent, count]) => ({ scent, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+      const nextCart = existing
+        ? cartRef.current.map((item) =>
+            item.variantId === variant.id ? { ...item, quantity: nextQuantity } : item
+          )
+        : [
+            ...cartRef.current,
+            {
+              product,
+              variantId: variant.id,
+              variantLabel: getVariantLabel(variant),
+              quantity: nextQuantity,
+              unitPriceBWP: variant.priceBWP,
+            },
+          ];
 
-  const fastMovingSizes = Object.entries(sizeCounts)
-    .map(([size, count]) => ({ size, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  const metrics: StoreMetrics = {
-    totalRevenueBWP,
-    totalOrders: orders.length,
-    pendingVerifications: orders.filter((o) => o.status === 'pending_verification').length,
-    activeDeliveries: orders.filter((o) =>
-      ['ready_for_pickup', 'out_for_delivery'].includes(o.status)
-    ).length,
-    topScents,
-    fastMovingSizes,
-  };
-
-  return (
-    <StoreContext.Provider
-      value={{
-        products,
-        addProduct,
-        updateVariantStock,
-        cart,
-        addToCart,
-        removeFromCart,
-        updateCartQuantity,
-        clearCart,
-        cartCount,
-        cartSubtotal,
-        isCartOpen,
-        setIsCartOpen,
-        orders,
-        createOrder,
-        updateOrderStatus,
-        verifyPayment,
-        sellerConfig,
-        metrics,
-        selectedProductForModal,
-        setSelectedProductForModal,
-        activeOrderForPayment,
-        setActiveOrderForPayment,
-      }}
-    >
-      {children}
-    </StoreContext.Provider>
+      commitCart(nextCart);
+      showToast({
+        type: 'success',
+        title: 'Product added to bag',
+        description: `${product.title} · ${getVariantLabel(variant)}`,
+      });
+    },
+    [commitCart, showToast]
   );
+
+  const setCartQuantity = useCallback(
+    (variantId: string, quantity: number) => {
+      const item = cartRef.current.find((entry) => entry.variantId === variantId);
+      if (!item) return;
+
+      if (quantity <= 0) {
+        commitCart(cartRef.current.filter((entry) => entry.variantId !== variantId));
+        return;
+      }
+
+      const liveVariant = findVariant(item.product, variantId);
+      const ceiling = Math.max(liveVariant?.stockQuantity ?? item.quantity, 1);
+      const clamped = Math.min(quantity, ceiling);
+
+      if (quantity > ceiling) {
+        showToast({
+          type: 'info',
+          title: 'Stock limit reached',
+          description: `Only ${ceiling} available for ${item.variantLabel}.`,
+        });
+      }
+
+      commitCart(
+        cartRef.current.map((entry) =>
+          entry.variantId === variantId ? { ...entry, quantity: clamped } : entry
+        )
+      );
+    },
+    [commitCart, showToast]
+  );
+
+  const incrementCartItem = useCallback(
+    (variantId: string) => {
+      const item = cartRef.current.find((entry) => entry.variantId === variantId);
+      if (item) setCartQuantity(variantId, item.quantity + 1);
+    },
+    [setCartQuantity]
+  );
+
+  const decrementCartItem = useCallback(
+    (variantId: string) => {
+      const item = cartRef.current.find((entry) => entry.variantId === variantId);
+      if (item) setCartQuantity(variantId, item.quantity - 1);
+    },
+    [setCartQuantity]
+  );
+
+  const removeFromCart = useCallback(
+    (variantId: string) => {
+      const item = cartRef.current.find((entry) => entry.variantId === variantId);
+      commitCart(cartRef.current.filter((entry) => entry.variantId !== variantId));
+      if (item) {
+        showToast({ type: 'info', title: 'Removed from bag', description: item.product.title });
+      }
+    },
+    [commitCart, showToast]
+  );
+
+  const clearCart = useCallback(() => commitCart([]), [commitCart]);
+
+  /* ------------------------------------------------------------------ *
+   * Inventory helpers
+   * ------------------------------------------------------------------ */
+
+  const applyStockDelta = useCallback(
+    (updater: (variant: ProductVariant) => ProductVariant | null) => {
+      const changedVariants: ProductVariant[] = [];
+
+      const nextProducts = productsRef.current.map((product) => {
+        let productChanged = false;
+        const variants = product.variants.map((variant) => {
+          const updated = updater(variant);
+          if (!updated) return variant;
+          if (updated.stockQuantity === variant.stockQuantity) return variant;
+
+          productChanged = true;
+          changedVariants.push(updated);
+          return updated;
+        });
+
+        return productChanged ? { ...product, variants } : product;
+      });
+
+      if (changedVariants.length === 0) return;
+      commitProducts(nextProducts);
+      changedVariants.forEach((variant) => void syncVariantStock(variant.id, variant.stockQuantity));
+    },
+    [commitProducts]
+  );
+
+  const setVariantStock = useCallback(
+    (productId: string, variantId: string, stockQuantity: number) => {
+      applyStockDelta((variant) =>
+        variant.id === variantId && variant.productId === productId
+          ? { ...variant, stockQuantity: Math.max(0, Math.round(stockQuantity)) }
+          : null
+      );
+    },
+    [applyStockDelta]
+  );
+
+  const adjustVariantStock = useCallback(
+    (productId: string, variantId: string, delta: number) => {
+      applyStockDelta((variant) =>
+        variant.id === variantId && variant.productId === productId
+          ? { ...variant, stockQuantity: Math.max(0, variant.stockQuantity + delta) }
+          : null
+      );
+    },
+    [applyStockDelta]
+  );
+
+  const toggleProductActive = useCallback(
+    (productId: string) => {
+      const next = productsRef.current.map((product) =>
+        product.id === productId ? { ...product, isActive: !product.isActive } : product
+      );
+      commitProducts(next);
+
+      const product = next.find((candidate) => candidate.id === productId);
+      if (product) {
+        showToast({
+          type: 'info',
+          title: product.isActive ? 'Product published' : 'Product hidden',
+          description: product.title,
+        });
+      }
+    },
+    [commitProducts, showToast]
+  );
+
+  const addProduct = useCallback(
+    (product: Product) => {
+      commitProducts([product, ...productsRef.current]);
+      showToast({
+        type: 'success',
+        title: 'Product created',
+        description: `${product.title} is now live in the catalog.`,
+      });
+    },
+    [commitProducts, showToast]
+  );
+
+  const resetDemoData = useCallback(() => {
+    clearStorefrontCache();
+    productsRef.current = INITIAL_PRODUCTS;
+    ordersRef.current = INITIAL_ORDERS;
+    cartRef.current = [];
+    setProducts(INITIAL_PRODUCTS);
+    setOrders(INITIAL_ORDERS);
+    setCart([]);
+    showToast({
+      type: 'success',
+      title: 'Local store data reset',
+      description: 'Catalog, bag and orders restored to the demo defaults.',
+    });
+  }, [showToast]);
+
+  /* ------------------------------------------------------------------ *
+   * Orders
+   * ------------------------------------------------------------------ */
+
+  const createOrder = useCallback(
+    ({ customer, paymentMethod }: CheckoutInput): Order => {
+      const items = cartRef.current;
+      const subtotalBWP = getCartSubtotal(items);
+      const deliveryFeeBWP = DELIVERY_OPTIONS_BY_ID[customer.deliveryPreference]?.feeBWP ?? 0;
+      const now = Date.now();
+
+      const order: Order = {
+        id: `ord-${now}`,
+        orderNumber: generateOrderNumber(),
+        customer,
+        items: items.map((item, index) => ({
+          id: `item-${now}-${index}`,
+          productId: item.product.id,
+          variantId: item.variantId,
+          productTitle: item.product.title,
+          variantLabel: item.variantLabel,
+          unitPriceBWP: item.unitPriceBWP,
+          quantity: item.quantity,
+          lineTotalBWP: item.unitPriceBWP * item.quantity,
+        })),
+        subtotalBWP,
+        deliveryFeeBWP,
+        totalAmountBWP: subtotalBWP + deliveryFeeBWP,
+        paymentMethod,
+        status: 'pending_verification',
+        createdAt: new Date().toISOString(),
+      };
+
+      commitOrders([order, ...ordersRef.current]);
+
+      // Reserve stock immediately so the storefront never oversells.
+      applyStockDelta((variant) => {
+        const line = items.find((item) => item.variantId === variant.id);
+        if (!line) return null;
+        return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - line.quantity) };
+      });
+
+      clearCart();
+      void persistOrder(order);
+
+      return order;
+    },
+    [applyStockDelta, clearCart, commitOrders]
+  );
+
+  const updateOrderStatus = useCallback(
+    (orderId: string, status: OrderStatus, notes?: string) => {
+      let updatedOrder: Order | undefined;
+
+      const next = ordersRef.current.map((order) => {
+        if (order.id !== orderId) return order;
+
+        updatedOrder = {
+          ...order,
+          status,
+          verificationNotes: notes?.trim() ? notes.trim() : order.verificationNotes,
+          verifiedAt:
+            status === 'payment_confirmed' && !order.verifiedAt ? new Date().toISOString() : order.verifiedAt,
+        };
+
+        return updatedOrder;
+      });
+
+      if (!updatedOrder) return;
+
+      commitOrders(next);
+      void syncOrderStatus(updatedOrder);
+
+      showToast({
+        type: 'success',
+        title: `Order ${updatedOrder.orderNumber} updated`,
+        description: notes?.trim() ? notes.trim() : undefined,
+      });
+    },
+    [commitOrders, showToast]
+  );
+
+  const reviews = CUSTOMER_REVIEWS;
+
+  const getProductReviews = useCallback(
+    (productId: string) => reviews.filter((review) => review.productId === productId),
+    [reviews]
+  );
+
+  const getProductRating = useCallback(
+    (productId: string) => {
+      const productReviews = reviews.filter((review) => review.productId === productId);
+      if (!productReviews.length) return { average: 0, count: 0 };
+
+      const average =
+        productReviews.reduce((sum, review) => sum + review.rating, 0) / productReviews.length;
+
+      return { average: Math.round(average * 10) / 10, count: productReviews.length };
+    },
+    [reviews]
+  );
+
+  /* ------------------------------------------------------------------ *
+   * Derived state
+   * ------------------------------------------------------------------ */
+
+  const cartCount = useMemo(() => getCartCount(cart), [cart]);
+  const cartSubtotal = useMemo(() => getCartSubtotal(cart), [cart]);
+
+  const metrics = useMemo<StoreMetrics>(() => {
+    const revenueStatuses: OrderStatus[] = ['payment_confirmed', 'dispatched', 'completed'];
+
+    const lowStockVariants = products.flatMap((product) =>
+      product.variants
+        .filter((variant) => variant.stockQuantity > 0 && variant.stockQuantity <= variant.lowStockThreshold)
+        .map((variant) => ({
+          productId: product.id,
+          productTitle: product.title,
+          variantId: variant.id,
+          variantLabel: getVariantLabel(variant),
+          stockQuantity: variant.stockQuantity,
+        }))
+    );
+
+    const unitsByLabel = new Map<string, number>();
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        unitsByLabel.set(item.productTitle, (unitsByLabel.get(item.productTitle) ?? 0) + item.quantity);
+      });
+    });
+
+    return {
+      totalRevenueBWP: orders
+        .filter((order) => revenueStatuses.includes(order.status))
+        .reduce((sum, order) => sum + order.totalAmountBWP, 0),
+      totalOrders: orders.length,
+      pendingVerificationCount: orders.filter((order) => order.status === 'pending_verification').length,
+      dispatchedCount: orders.filter((order) => order.status === 'dispatched').length,
+      totalStockUnits: products.reduce(
+        (sum, product) => sum + product.variants.reduce((acc, variant) => acc + variant.stockQuantity, 0),
+        0
+      ),
+      lowStockVariantCount: lowStockVariants.length,
+      lowStockVariants: lowStockVariants.sort((a, b) => a.stockQuantity - b.stockQuantity),
+      bestSellers: Array.from(unitsByLabel.entries())
+        .map(([label, units]) => ({ label, units }))
+        .sort((a, b) => b.units - a.units)
+        .slice(0, 4),
+    };
+  }, [orders, products]);
+
+  const value = useMemo<StoreContextValue>(
+    () => ({
+      products,
+      reviews,
+      getProductReviews,
+      getProductRating,
+
+      cart,
+      cartCount,
+      cartSubtotal,
+      addToCart,
+      setCartQuantity,
+      incrementCartItem,
+      decrementCartItem,
+      removeFromCart,
+      clearCart,
+
+      orders,
+      createOrder,
+      updateOrderStatus,
+      selectedDelivery,
+      setSelectedDelivery,
+
+      addProduct,
+      setVariantStock,
+      adjustVariantStock,
+      toggleProductActive,
+      resetDemoData,
+
+      isAdminUnlocked,
+      adminAttemptsRemaining: Math.max(0, MAX_ADMIN_ATTEMPTS - attemptState.attempts),
+      adminLockSecondsRemaining: lockSecondsRemaining,
+      unlockAdmin,
+      lockAdmin,
+
+      activeProduct,
+      openProduct: setActiveProduct,
+      closeProduct: () => setActiveProduct(null),
+      isCartOpen,
+      openCart: () => setIsCartOpen(true),
+      closeCart: () => setIsCartOpen(false),
+      isCheckoutOpen,
+      openCheckout: () => {
+        setIsCartOpen(false);
+        setIsCheckoutOpen(true);
+      },
+      closeCheckout: () => setIsCheckoutOpen(false),
+
+      hasHydrated,
+      isCloudSync,
+      metrics,
+    }),
+    [
+      products,
+      reviews,
+      getProductReviews,
+      getProductRating,
+      cart,
+      cartCount,
+      cartSubtotal,
+      addToCart,
+      setCartQuantity,
+      incrementCartItem,
+      decrementCartItem,
+      removeFromCart,
+      clearCart,
+      orders,
+      createOrder,
+      updateOrderStatus,
+      selectedDelivery,
+      addProduct,
+      setVariantStock,
+      adjustVariantStock,
+      toggleProductActive,
+      resetDemoData,
+      isAdminUnlocked,
+      attemptState.attempts,
+      lockSecondsRemaining,
+      unlockAdmin,
+      lockAdmin,
+      activeProduct,
+      isCartOpen,
+      isCheckoutOpen,
+      hasHydrated,
+      isCloudSync,
+      metrics,
+    ]
+  );
+
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
-export function useStore() {
+export function useStore(): StoreContextValue {
   const context = useContext(StoreContext);
   if (!context) {
     throw new Error('useStore must be used within a StoreProvider');

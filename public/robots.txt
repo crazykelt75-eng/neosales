@@ -1,5 +1,8 @@
+# NeoSales Botswana — https://neosales.crazykelt75.workers.dev
 User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /admin/
 
+# Order confirmations and bag state are client-side only; nothing to index there.
 Sitemap: https://neosales.crazykelt75.workers.dev/sitemap.xml

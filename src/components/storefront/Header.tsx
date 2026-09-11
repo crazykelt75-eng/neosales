@@ -2,99 +2,151 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ShoppingBag, ShieldCheck, Sparkles, MapPin } from 'lucide-react';
+import { Menu, MessageCircle, ShoppingBag, Truck, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
+import { SELLER_CONFIG } from '@/lib/constants';
+import { formatBWPCompact } from '@/lib/format';
+import { buildSupportLink } from '@/lib/whatsapp';
 
+const NAV_LINKS = [
+  { href: '#catalog', label: 'Shop Collection' },
+  { href: '#delivery-info', label: 'Delivery & Pickup' },
+];
+
+/** Sticky storefront navigation with live bag counter. */
 export function Header() {
-  const { cartCount, cartSubtotal, setIsCartOpen } = useStore();
+  const { cartCount, cartSubtotal, openCart } = useStore();
+  const [isMobileNavOpen, setIsMobileNavOpen] = React.useState(false);
 
   return (
-    <header className="sticky top-0 z-30 bg-[#07080c]/85 backdrop-blur-xl border-b border-white/10 transition-all">
-      {/* Botswana Local Context Trust Banner */}
-      <aside
-        aria-label="Regional delivery and payment notice"
-        className="bg-[#040507] text-white text-[11px] sm:text-xs py-2 px-4 text-center flex items-center justify-center gap-1.5 font-medium tracking-wide border-b border-white/[0.06] shadow-xs"
-      >
-        <span className="text-sm" aria-hidden="true">🇧🇼</span>
-        <span className="text-neutral-200">Free Francistown & Tati Siding Pickups • Nationwide Courier Delivery</span>
-        <span className="text-neutral-600 hidden xs:inline" aria-hidden="true">•</span>
-        <span className="hidden xs:inline text-neutral-300">
-          Pay via <strong className="text-orange-400 font-bold">Orange Money</strong> or <strong className="text-cyan-400 font-bold">FNB Pay2Cell</strong>
-        </span>
-      </aside>
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#07080c]/85 backdrop-blur-xl">
+      {/* Botswana fulfilment trust strip */}
+      <div className="border-b border-white/[0.06] bg-black/40">
+        <p className="mx-auto flex max-w-6xl items-center justify-center gap-2 px-4 py-1.5 text-center text-2xs font-medium text-neutral-300 sm:text-xs">
+          <Truck size={13} className="text-orangeMoney" aria-hidden="true" />
+          <span>Free Francistown pickups · Nationwide Sprint Couriers · Authentic guarantee</span>
+        </p>
+      </div>
 
-      {/* Main Navigation Bar */}
-      <nav
-        aria-label="Store header navigation"
-        className="max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between gap-3"
-      >
+      <nav aria-label="Main" className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:h-18 sm:px-6">
         {/* Brand */}
         <Link
           href="/"
-          className="group flex flex-col focus-visible:outline-2 focus-visible:outline-orangeMoney rounded-lg p-1 -m-1 transition-transform active:scale-[0.99]"
-          aria-label="NeoSales Homepage"
+          className="group flex items-center gap-2 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orangeMoney"
+          aria-label={`${SELLER_CONFIG.storeName} home`}
         >
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="font-extrabold text-xl sm:text-2xl tracking-tight text-white">
-              NEO<span className="text-orangeMoney group-hover:text-amber-400 transition-colors">SALES</span>
-            </span>
-            <span className="text-[10px] uppercase font-bold bg-white/[0.07] text-neutral-300 border border-white/10 px-2 py-0.5 rounded-full tracking-wider flex items-center gap-1">
-              <MapPin size={10} className="text-orangeMoney" />
-              Francistown & Tati Siding
-            </span>
-          </div>
-          <span className="text-[10px] sm:text-[11px] text-neutral-400 font-medium tracking-wider uppercase">
-            Curated Fragrances & Fashion
+          <span className="text-xl font-extrabold tracking-tight text-white sm:text-2xl">
+            NeoSales
+            <span
+              aria-hidden="true"
+              className="ml-0.5 inline-block h-2 w-2 rounded-full bg-orangeMoney align-super transition-transform duration-300 group-hover:scale-125"
+            />
+          </span>
+          <span className="hidden text-2xs font-semibold uppercase tracking-[0.18em] text-neutral-400 lg:inline">
+            Francistown · Botswana
           </span>
         </Link>
 
-        {/* Navigation Links for Shoppers */}
-        <div className="hidden md:flex items-center gap-6">
+        {/* Desktop navigation */}
+        <div className="hidden items-center gap-1 md:flex">
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="rounded-xl px-3.5 py-2 text-sm font-semibold text-neutral-300 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+            >
+              {link.label}
+            </a>
+          ))}
           <a
-            href="#catalog"
-            className="text-xs font-bold text-neutral-300 hover:text-orangeMoney transition-colors tracking-wide"
+            href={buildSupportLink('I would like to ask about your collection.')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl px-3.5 py-2 text-sm font-semibold text-neutral-300 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
           >
-            Curated Catalog
-          </a>
-          <a
-            href="#delivery-info"
-            className="text-xs font-bold text-neutral-300 hover:text-orangeMoney transition-colors tracking-wide"
-          >
-            Pickups & Delivery
+            Chat to us
           </a>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 sm:gap-3">
-
-          {/* Cart Trigger Button */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsCartOpen(true)}
-            className="min-h-[44px] px-3.5 sm:px-4 py-2.5 bg-gradient-to-r from-orangeMoney to-orangeMoney-dark hover:from-orangeMoney-dark hover:to-orange-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-glow-orange hover:shadow-elevated active:scale-[0.97] transition-all focus-visible:outline-2 focus-visible:outline-white"
-            aria-label={`Shopping cart with ${cartCount} items totaling P${cartSubtotal.toFixed(2)}`}
+            type="button"
+            onClick={() => setIsMobileNavOpen((open) => !open)}
+            aria-expanded={isMobileNavOpen}
+            aria-controls="mobile-nav"
+            aria-label={isMobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 text-neutral-200 transition-colors hover:bg-white/[0.09] focus-visible:outline-2 focus-visible:outline-orangeMoney md:hidden"
           >
-            <div className="relative">
-              <ShoppingBag size={17} aria-hidden="true" />
-              {cartCount > 0 && (
-                <span className="sm:hidden absolute -top-2 -right-2 bg-white text-neutral-950 text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
-                  {cartCount}
-                </span>
-              )}
-            </div>
+            {isMobileNavOpen ? <X size={17} aria-hidden="true" /> : <Menu size={17} aria-hidden="true" />}
+          </button>
+
+          {/* Bag */}
+          <button
+            type="button"
+            onClick={openCart}
+            aria-label={
+              cartCount > 0
+                ? `Open shopping bag, ${cartCount} item${cartCount === 1 ? '' : 's'}, subtotal ${formatBWPCompact(
+                    cartSubtotal
+                  )}`
+                : 'Open shopping bag, empty'
+            }
+            className="relative inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-orangeMoney/40 bg-gradient-to-r from-orangeMoney to-orangeMoney-dark px-3.5 py-2.5 text-sm font-bold text-white shadow-[0_10px_30px_-14px_rgba(255,102,0,1)] transition-transform duration-150 ease-luxe hover:scale-[1.02] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orangeMoney"
+          >
+            <ShoppingBag size={17} aria-hidden="true" />
             <span className="hidden sm:inline">Bag</span>
+
             {cartCount > 0 && (
-              <span className="hidden sm:inline-flex bg-white/20 backdrop-blur-xs text-white text-[11px] font-extrabold px-1.5 py-0.5 rounded-full min-w-[20px] text-center justify-center items-center">
+              <span
+                aria-hidden="true"
+                className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full border border-midnight bg-white px-1 text-2xs font-black text-neutral-950"
+              >
                 {cartCount}
               </span>
             )}
+
             {cartSubtotal > 0 && (
-              <span className="text-white/90 font-extrabold border-l border-white/20 pl-2 text-xs">
-                P{cartSubtotal.toFixed(0)}
+              <span
+                aria-hidden="true"
+                className="hidden border-l border-white/25 pl-2 font-mono text-xs font-bold sm:inline"
+                data-price
+              >
+                {formatBWPCompact(cartSubtotal)}
               </span>
             )}
           </button>
         </div>
       </nav>
+
+      {/* Mobile navigation drawer (inline disclosure, no focus trap needed) */}
+      {isMobileNavOpen && (
+        <div id="mobile-nav" className="animate-slideUp border-t border-white/10 bg-surface/95 px-4 py-3 md:hidden">
+          <ul className="space-y-1">
+            {NAV_LINKS.map((link) => (
+              <li key={link.href}>
+                <a
+                  href={link.href}
+                  onClick={() => setIsMobileNavOpen(false)}
+                  className="block rounded-xl px-3 py-3 text-sm font-semibold text-neutral-200 transition-colors hover:bg-white/[0.06] hover:text-white"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+            <li>
+              <a
+                href={buildSupportLink('I would like to ask about your collection.')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-whatsapp transition-colors hover:bg-whatsapp/10"
+              >
+                <MessageCircle size={16} aria-hidden="true" />
+                Chat to us on WhatsApp
+              </a>
+            </li>
+          </ul>
+        </div>
+      )}
     </header>
   );
 }

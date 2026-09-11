@@ -11,6 +11,15 @@ interface Props {
   product: Product;
 }
 
+function getOptimizedImageUrl(url: string, width = 600) {
+  if (!url) return '';
+  if (url.includes('images.unsplash.com')) {
+    const cleanUrl = url.split('?')[0];
+    return `${cleanUrl}?auto=format&fit=crop&w=${width}&q=80`;
+  }
+  return url;
+}
+
 export function ProductCard({ product }: Props) {
   const { setSelectedProductForModal } = useStore();
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -29,32 +38,30 @@ export function ProductCard({ product }: Props) {
     setSelectedProductForModal(product);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handleOpen();
-    }
-  };
+  const optimizedSrc = getOptimizedImageUrl(product.imageUrls[0]);
 
   return (
-    <article
-      tabIndex={0}
-      role="button"
-      onClick={handleOpen}
-      onKeyDown={handleKeyDown}
-      aria-label={`View ${product.title}, priced from P${minPrice}. ${
-        isSoldOut ? 'Sold out' : isLowStock ? `Only ${totalStock} left` : 'In stock'
-      }`}
-      className="group flex flex-col bg-[#0e1118] rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 hover:border-orangeMoney/40 shadow-soft hover:shadow-[0_12px_35px_-8px_rgba(255,102,0,0.18)] hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-orangeMoney transition-all duration-300 cursor-pointer active:scale-[0.985]"
-    >
+    <article className="group relative flex flex-col bg-[#0e1118] rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 hover:border-orangeMoney/40 shadow-soft hover:shadow-[0_12px_35px_-8px_rgba(255,102,0,0.18)] hover:-translate-y-1 transition-all duration-300 active:scale-[0.985]">
+      {/* Native Accessible Action Button (stretched full card overlay) */}
+      <button
+        type="button"
+        onClick={handleOpen}
+        aria-label={`View ${product.title}, priced from P${minPrice}. ${
+          isSoldOut ? 'Sold out' : isLowStock ? `Only ${totalStock} left` : 'In stock'
+        }`}
+        className="absolute inset-0 z-10 w-full h-full cursor-pointer rounded-2xl sm:rounded-3xl focus-visible:outline-2 focus-visible:outline-orangeMoney focus-visible:outline-offset-2"
+      />
+
       {/* Product Image Stage */}
       <div className="relative w-full aspect-[4/5] bg-[#08090f] overflow-hidden">
         {!imageLoaded && <Skeleton className="absolute inset-0 z-0" />}
 
-        {product.imageUrls[0] ? (
+        {optimizedSrc ? (
           <img
-            src={product.imageUrls[0]}
+            src={optimizedSrc}
             alt={product.title}
+            width="400"
+            height="500"
             onLoad={() => setImageLoaded(true)}
             className={`w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
@@ -62,13 +69,13 @@ export function ProductCard({ product }: Props) {
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">
+          <div className="w-full h-full flex items-center justify-center text-neutral-400 text-xs">
             No image available
           </div>
         )}
 
         {/* Floating Top Badges */}
-        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start z-10">
+        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start z-20 pointer-events-none">
           {product.isNewArrival && (
             <Badge variant="new">NEW</Badge>
           )}
@@ -80,7 +87,7 @@ export function ProductCard({ product }: Props) {
         </div>
 
         {/* Stock Status Badge */}
-        <div className="absolute top-2.5 right-2.5 z-10">
+        <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none">
           {isSoldOut ? (
             <Badge variant="soldOut">Sold Out</Badge>
           ) : isLowStock ? (
@@ -91,7 +98,7 @@ export function ProductCard({ product }: Props) {
         </div>
 
         {/* Floating Category Pill */}
-        <div className="absolute bottom-2.5 left-2.5 right-2.5 bg-[#0a0c12]/85 backdrop-blur-md px-2.5 py-1 rounded-xl text-[11px] text-neutral-200 font-semibold flex items-center justify-between border border-white/10 shadow-xs">
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-20 pointer-events-none bg-[#0a0c12]/85 backdrop-blur-md px-2.5 py-1 rounded-xl text-[11px] text-neutral-200 font-semibold flex items-center justify-between border border-white/10 shadow-xs">
           <span className="capitalize">{product.category}</span>
           <span className="text-neutral-400 font-normal">
             {product.variants.length} {product.category === 'perfumes' ? 'volumes' : 'options'}
@@ -125,9 +132,10 @@ export function ProductCard({ product }: Props) {
           </div>
 
           <span
+            aria-hidden="true"
             className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
               isSoldOut
-                ? 'bg-white/[0.04] text-neutral-500 border border-white/5 cursor-not-allowed'
+                ? 'bg-white/[0.04] text-neutral-400 border border-white/5 cursor-not-allowed'
                 : 'bg-white/[0.08] hover:bg-orangeMoney text-white border border-white/15 group-hover:bg-gradient-to-r group-hover:from-orangeMoney group-hover:to-orangeMoney-dark group-hover:border-orangeMoney group-hover:shadow-glow-orange'
             }`}
           >

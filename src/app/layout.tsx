@@ -12,7 +12,10 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://neosales-bw.vercel.app'),
+  metadataBase: new URL('https://neosales.crazykelt75.workers.dev'),
+  alternates: {
+    canonical: '/',
+  },
   title: {
     default: 'NeoSales | Curated Fashion & Niche Perfumes Botswana',
     template: '%s | NeoSales',
@@ -42,7 +45,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_BW',
-    url: 'https://neosales-bw.vercel.app',
+    url: 'https://neosales.crazykelt75.workers.dev',
     siteName: 'NeoSales',
     title: 'NeoSales | Curated Fashion & Niche Perfumes Botswana',
     description:
@@ -81,7 +84,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0f172a',
+  themeColor: '#07080c',
 };
 
 export default function RootLayout({
@@ -91,7 +94,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={jakarta.variable}>
-      <body className="antialiased min-h-screen flex flex-col bg-neutral-50 text-neutral-900 font-sans selection:bg-orangeMoney/20 selection:text-orangeMoney-dark">
+      <body className="antialiased min-h-screen flex flex-col bg-[#07080c] text-white font-sans selection:bg-orangeMoney/30 selection:text-orangeMoney-light">
         <ToastProvider>
           <StoreProvider>
             {children}

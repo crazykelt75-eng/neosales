@@ -46,8 +46,57 @@ export default function StorefrontPage() {
     return product.category === selectedCategory;
   });
 
+  // Schema.org Structured Data
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'OnlineStore',
+    name: 'NeoSales',
+    url: 'https://neosales.crazykelt75.workers.dev',
+    description:
+      'Boutique luxury niche extrait fragrances and curated summer linen apparel in Botswana with direct Orange Money and FNB Pay2Cell checkout.',
+    currenciesAccepted: 'BWP',
+    paymentAccepted: 'Orange Money, FNB Pay2Cell, Cash on Collection',
+    telephone: '+26771550200',
+    areaServed: [
+      { '@type': 'City', name: 'Francistown' },
+      { '@type': 'AdministrativeArea', name: 'Tati Siding' },
+      { '@type': 'Country', name: 'Botswana' },
+    ],
+    hasMerchantReturnPolicy: {
+      '@type': 'MerchantReturnPolicy',
+      applicableCountry: 'BW',
+      returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+      merchantReturnDays: 2,
+      returnMethod: 'https://schema.org/ReturnInStore',
+    },
+    itemListElement: products.map((prod, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      item: {
+        '@type': 'Product',
+        name: prod.title,
+        description: prod.description,
+        image: prod.imageUrls[0],
+        offers: {
+          '@type': 'Offer',
+          priceCurrency: 'BWP',
+          price: prod.basePriceBWP,
+          availability: prod.variants.some((v) => v.stockQuantity > 0)
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/OutOfStock',
+        },
+      },
+    })),
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-transparent pb-28 sm:pb-16 selection:bg-orangeMoney/30 selection:text-orangeMoney-light">
+      {/* Schema.org Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       {/* Accessible skip link */}
       <a
         href="#main-content"
@@ -59,6 +108,11 @@ export default function StorefrontPage() {
       <Header />
 
       <main id="main-content" className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-8">
+        {/* Semantic H1 for WCAG 1.3.1 & Core Technical SEO */}
+        <h1 className="sr-only">
+          NeoSales Botswana — Curated Niche Extrait Fragrances & Summer Linen Apparel
+        </h1>
+
         {/* Dynamic New Arrivals Spotlight with Customer Reviews */}
         <HeroSpotlight />
 
@@ -77,7 +131,7 @@ export default function StorefrontPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label="Search catalog products"
-              className="w-full pl-10 pr-10 py-3 bg-[#0d1017]/90 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder:text-neutral-500 shadow-elevated focus:outline-none focus:ring-2 focus:ring-orangeMoney/30 focus:border-orangeMoney transition-all backdrop-blur-md"
+              className="w-full pl-10 pr-10 py-3 bg-[#0d1017]/90 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder:text-neutral-400 shadow-elevated focus:outline-none focus:ring-2 focus:ring-orangeMoney/30 focus:border-orangeMoney transition-all backdrop-blur-md"
             />
             {searchQuery && (
               <button
@@ -91,71 +145,75 @@ export default function StorefrontPage() {
           </div>
 
           {/* Category Filter Pills (Mobile scrollable, tablet/desktop flex) */}
-          <div
-            role="tablist"
-            aria-label="Product categories"
-            className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-none snap-x"
-          >
-            <button
-              role="tab"
-              aria-selected={selectedCategory === 'all'}
-              onClick={() => setSelectedCategory('all')}
-              className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
-                selectedCategory === 'all'
-                  ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
-                  : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
-              }`}
+          <div className="relative">
+            <div
+              role="tablist"
+              aria-label="Product categories"
+              className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-none snap-x"
             >
-              <span>All Products</span>
-              <span className="text-[10px] font-mono opacity-80">({products.length})</span>
-            </button>
+              <button
+                role="tab"
+                aria-selected={selectedCategory === 'all'}
+                onClick={() => setSelectedCategory('all')}
+                className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
+                  selectedCategory === 'all'
+                    ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
+                    : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
+                }`}
+              >
+                <span>All Products</span>
+                <span className="text-[10px] font-mono opacity-80">({products.length})</span>
+              </button>
 
-            <button
-              role="tab"
-              aria-selected={selectedCategory === 'perfumes'}
-              onClick={() => setSelectedCategory('perfumes')}
-              className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
-                selectedCategory === 'perfumes'
-                  ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
-                  : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
-              }`}
-            >
-              <Droplets size={14} aria-hidden="true" />
-              <span>Niche Perfumes</span>
-            </button>
+              <button
+                role="tab"
+                aria-selected={selectedCategory === 'perfumes'}
+                onClick={() => setSelectedCategory('perfumes')}
+                className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
+                  selectedCategory === 'perfumes'
+                    ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
+                    : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
+                }`}
+              >
+                <Droplets size={14} aria-hidden="true" />
+                <span>Niche Perfumes</span>
+              </button>
 
-            <button
-              role="tab"
-              aria-selected={selectedCategory === 'clothes'}
-              onClick={() => setSelectedCategory('clothes')}
-              className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
-                selectedCategory === 'clothes'
-                  ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
-                  : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
-              }`}
-            >
-              <Shirt size={14} aria-hidden="true" />
-              <span>Linen Clothes</span>
-            </button>
+              <button
+                role="tab"
+                aria-selected={selectedCategory === 'clothes'}
+                onClick={() => setSelectedCategory('clothes')}
+                className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
+                  selectedCategory === 'clothes'
+                    ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
+                    : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
+                }`}
+              >
+                <Shirt size={14} aria-hidden="true" />
+                <span>Linen Clothes</span>
+              </button>
 
-            <button
-              role="tab"
-              aria-selected={selectedCategory === 'new_arrivals'}
-              onClick={() => setSelectedCategory('new_arrivals')}
-              className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
-                selectedCategory === 'new_arrivals'
-                  ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
-                  : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
-              }`}
-            >
-              <Sparkles size={14} className={selectedCategory === 'new_arrivals' ? 'text-amber-200' : 'text-amber-400'} aria-hidden="true" />
-              <span>New Arrivals</span>
-            </button>
+              <button
+                role="tab"
+                aria-selected={selectedCategory === 'new_arrivals'}
+                onClick={() => setSelectedCategory('new_arrivals')}
+                className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 snap-start active:scale-95 ${
+                  selectedCategory === 'new_arrivals'
+                    ? 'bg-gradient-to-r from-orangeMoney to-orangeMoney-dark text-white shadow-glow-orange border border-orangeMoney/40'
+                    : 'bg-white/[0.05] border border-white/10 text-neutral-300 hover:border-white/20 hover:bg-white/[0.10] hover:text-white'
+                }`}
+              >
+                <Sparkles size={14} className={selectedCategory === 'new_arrivals' ? 'text-amber-200' : 'text-amber-400'} aria-hidden="true" />
+                <span>New Arrivals</span>
+              </button>
+            </div>
+            {/* Subtle right-edge scroll cue on mobile */}
+            <div className="sm:hidden absolute right-0 top-0 bottom-1.5 w-6 bg-gradient-to-l from-[#07080c] to-transparent pointer-events-none" />
           </div>
         </section>
 
         {/* Product Catalog Grid */}
-        <section aria-label="Available products">
+        <section id="catalog" aria-label="Available products" className="scroll-mt-28">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
               {selectedCategory === 'all'

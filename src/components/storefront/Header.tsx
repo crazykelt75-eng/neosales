@@ -48,18 +48,24 @@ export function Header() {
           </span>
         </Link>
 
+        {/* Navigation Links for Shoppers */}
+        <div className="hidden md:flex items-center gap-6">
+          <a
+            href="#catalog"
+            className="text-xs font-bold text-neutral-300 hover:text-orangeMoney transition-colors tracking-wide"
+          >
+            Curated Catalog
+          </a>
+          <a
+            href="#delivery-info"
+            className="text-xs font-bold text-neutral-300 hover:text-orangeMoney transition-colors tracking-wide"
+          >
+            Pickups & Delivery
+          </a>
+        </div>
+
         {/* Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Seller Portal Link */}
-          <Link
-            href="/admin"
-            className="min-h-[44px] min-w-[44px] px-3.5 py-2 text-xs font-semibold text-neutral-300 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] rounded-xl transition-all flex items-center justify-center gap-1.5 border border-white/10 active:scale-95 focus-visible:outline-2 focus-visible:outline-orangeMoney"
-            title="Open Seller Operations Portal"
-          >
-            <ShieldCheck size={16} className="text-neutral-300 flex-shrink-0" aria-hidden="true" />
-            <span className="hidden md:inline">Seller Portal</span>
-            <span className="md:hidden text-[11px]">Admin</span>
-          </Link>
 
           {/* Cart Trigger Button */}
           <button

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, ArrowRight, ShieldCheck, Truck, Smartphone, CreditCard, Check, MapPin, User, Phone } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CustomerInput, PaymentMethod, DeliveryPreference, Order } from '@/types';
@@ -58,15 +58,65 @@ export function CheckoutModal({ onClose, onOrderComplete }: Props) {
   const deliveryFee = DELIVERY_OPTIONS_LABELS[deliveryPreference].fee;
   const grandTotal = cartSubtotal + deliveryFee;
 
-  // Escape key close
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Initial focus and focus restoration
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    setTimeout(() => {
+      const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
+        'input, select, textarea, button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable && focusable.length > 0) {
+        focusable[0].focus();
+      }
+    }, 50);
+
+    return () => {
+      if (previousFocusRef.current) {
+        previousFocusRef.current.focus();
+      }
+    };
+  }, []);
+
+  // Escape key close & Tab focus trapping
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (focusable.length === 0) return;
+
+        const firstEl = focusable[0];
+        const lastEl = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstEl) {
+            e.preventDefault();
+            lastEl.focus();
+          }
+        } else {
+          if (document.activeElement === lastEl) {
+            e.preventDefault();
+            firstEl.focus();
+          }
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
   }, [onClose]);
 
   const validateForm = () => {
@@ -136,7 +186,10 @@ export function CheckoutModal({ onClose, onOrderComplete }: Props) {
     >
       <div className="fixed inset-0 cursor-pointer" onClick={onClose} aria-hidden="true" />
 
-      <div className="relative w-full max-w-lg bg-[#0e1118] text-white rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/10 z-10 max-h-[94vh] flex flex-col animate-scaleIn">
+      <div
+        ref={modalRef}
+        className="relative w-full max-w-lg bg-[#0e1118] text-white rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.95)] border border-white/10 z-10 max-h-[94vh] flex flex-col animate-scaleIn"
+      >
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-[#08090f]/90 backdrop-blur-md">
           <div>
@@ -190,7 +243,7 @@ export function CheckoutModal({ onClose, onOrderComplete }: Props) {
                       autoComplete="name"
                       aria-invalid={!!formErrors.fullName}
                       aria-describedby={formErrors.fullName ? 'name-error' : undefined}
-                      className="w-full pl-10 pr-3 py-3 bg-[#131622] border border-white/15 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:bg-[#161a28] focus:border-orangeMoney focus:ring-2 focus:ring-orangeMoney/20 focus:outline-none transition-all"
+                      className="w-full pl-10 pr-3 py-3 bg-[#131622] border border-white/15 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-400 focus:bg-[#161a28] focus:border-orangeMoney focus:ring-2 focus:ring-orangeMoney/20 focus:outline-none transition-all"
                     />
                   </div>
                   {formErrors.fullName && (
@@ -217,7 +270,7 @@ export function CheckoutModal({ onClose, onOrderComplete }: Props) {
                       autoComplete="tel"
                       aria-invalid={!!formErrors.phone}
                       aria-describedby={formErrors.phone ? 'phone-error' : undefined}
-                      className="w-full pl-10 pr-3 py-3 bg-[#131622] border border-white/15 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:bg-[#161a28] focus:border-orangeMoney focus:ring-2 focus:ring-orangeMoney/20 focus:outline-none transition-all"
+                      className="w-full pl-10 pr-3 py-3 bg-[#131622] border border-white/15 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-400 focus:bg-[#161a28] focus:border-orangeMoney focus:ring-2 focus:ring-orangeMoney/20 focus:outline-none transition-all"
                     />
                   </div>
                   {formErrors.phone && (
@@ -267,7 +320,7 @@ export function CheckoutModal({ onClose, onOrderComplete }: Props) {
                       autoComplete="street-address"
                       aria-invalid={!!formErrors.deliveryAddress}
                       aria-describedby={formErrors.deliveryAddress ? 'address-error' : undefined}
-                      className="w-full px-3 py-3 bg-[#131622] border border-white/15 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:bg-[#161a28] focus:border-orangeMoney focus:outline-none min-h-[44px]"
+                      className="w-full px-3 py-3 bg-[#131622] border border-white/15 rounded-xl text-xs sm:text-sm text-white placeholder:text-neutral-400 focus:bg-[#161a28] focus:border-orangeMoney focus:outline-none min-h-[44px]"
                     />
                   </div>
                 </div>

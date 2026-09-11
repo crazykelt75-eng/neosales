@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import {
   MapPin,
@@ -12,18 +12,23 @@ import {
   MessageCircle,
   ExternalLink,
   Store,
+  Lock,
+  RefreshCw,
+  FileText,
 } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { formatBotswanaPhone } from '@/lib/whatsapp';
+import { LegalModal, LegalTab } from '@/components/storefront/LegalModal';
 
 export function Footer() {
   const { sellerConfig } = useStore();
+  const [legalModalTab, setLegalModalTab] = useState<LegalTab | null>(null);
   const whatsappNumber = formatBotswanaPhone(sellerConfig.sellerWhatsApp);
 
   return (
     <footer className="mt-16 bg-[#040507] text-neutral-300 border-t border-white/10 transition-all">
-      {/* Value Pillars Banner */}
-      <div className="border-b border-white/10 bg-white/[0.02]">
+      {/* Value Pillars Banner (Anchor target for #delivery-info) */}
+      <div id="delivery-info" className="border-b border-white/10 bg-white/[0.02] scroll-mt-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Pillar 1: Francistown & Tati Siding */}
           <div className="flex items-start gap-3.5">
@@ -158,7 +163,7 @@ export function Footer() {
                   <span>Orange Money</span>
                 </div>
                 <p className="font-mono text-neutral-200 font-semibold">{sellerConfig.orangeMoneyNumber}</p>
-                <p className="text-[10px] text-neutral-500">Dial *145# • Zero-delay verification</p>
+                <p className="text-[10px] text-neutral-400">Dial *145# • Zero-delay verification</p>
               </div>
 
               <div className="p-3 bg-white/[0.03] border border-white/10 rounded-xl space-y-1">
@@ -167,24 +172,51 @@ export function Footer() {
                   <span>FNB Pay2Cell</span>
                 </div>
                 <p className="font-mono text-neutral-200 font-semibold">{sellerConfig.fnbPay2CellNumber}</p>
-                <p className="text-[10px] text-neutral-500">{sellerConfig.fnbAccountName}</p>
+                <p className="text-[10px] text-neutral-400">{sellerConfig.fnbAccountName}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
-          <p>
-            &copy; {new Date().getFullYear()} <strong className="text-neutral-300">NeoSales</strong>. Handcrafted for Botswana Local Commerce 🇧🇼.
-          </p>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span>Francistown & Tati Siding, North-East District</span>
-            <span aria-hidden="true">•</span>
-            <span>Zero DM friction</span>
+        {/* Legal Policies Bar */}
+        <div className="mt-10 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-4 text-neutral-400">
+            <button
+              onClick={() => setLegalModalTab('privacy')}
+              className="hover:text-white transition-colors underline-offset-4 hover:underline flex items-center gap-1"
+            >
+              <Lock size={12} />
+              <span>Privacy Policy (DPA)</span>
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setLegalModalTab('exchanges')}
+              className="hover:text-white transition-colors underline-offset-4 hover:underline flex items-center gap-1"
+            >
+              <RefreshCw size={12} />
+              <span>48h Sizing Guarantee</span>
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setLegalModalTab('terms')}
+              className="hover:text-white transition-colors underline-offset-4 hover:underline flex items-center gap-1"
+            >
+              <FileText size={12} />
+              <span>Terms of Sale</span>
+            </button>
           </div>
+
+          <p className="text-neutral-400">
+            &copy; {new Date().getFullYear()} <strong className="text-neutral-200">NeoSales</strong>. Handcrafted for Botswana Local Commerce 🇧🇼.
+          </p>
         </div>
       </div>
+
+      <LegalModal
+        isOpen={Boolean(legalModalTab)}
+        initialTab={legalModalTab || 'privacy'}
+        onClose={() => setLegalModalTab(null)}
+      />
     </footer>
   );
 }

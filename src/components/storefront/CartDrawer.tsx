@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Trash2, ArrowRight, ShoppingBag, Truck, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { CheckoutModal } from '@/components/checkout/CheckoutModal';
@@ -10,12 +10,54 @@ export function CartDrawer() {
   const { cart, removeFromCart, updateCartQuantity, cartSubtotal, isCartOpen, setIsCartOpen } =
     useStore();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  // Close on Escape key and prevent background body scroll
+  // Focus management: Trap focus inside drawer & restore previous focus on close
+  useEffect(() => {
+    if (isCartOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+      setTimeout(() => {
+        const focusable = drawerRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (focusable && focusable.length > 0) {
+          focusable[0].focus();
+        }
+      }, 50);
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+    }
+  }, [isCartOpen]);
+
+  // Handle Tab focus trapping and Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsCartOpen(false);
+        return;
+      }
+
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (focusable.length === 0) return;
+
+        const firstEl = focusable[0];
+        const lastEl = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstEl) {
+            e.preventDefault();
+            lastEl.focus();
+          }
+        } else {
+          if (document.activeElement === lastEl) {
+            e.preventDefault();
+            firstEl.focus();
+          }
+        }
       }
     };
 
@@ -47,7 +89,10 @@ export function CartDrawer() {
         />
 
         <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
-          <div className="w-screen max-w-md bg-[#0c0e16] text-white border-l border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex flex-col animate-slideUp sm:animate-none">
+          <div
+            ref={drawerRef}
+            className="w-screen max-w-md bg-[#0c0e16] text-white border-l border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex flex-col animate-slideUp sm:animate-none"
+          >
             {/* Header */}
             <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-[#08090f]/90 backdrop-blur-md">
               <div className="flex items-center gap-2.5">
@@ -114,6 +159,11 @@ export function CartDrawer() {
                           <p className="text-[11px] text-neutral-400 font-semibold mt-0.5">
                             {item.variantLabel}
                           </p>
+                          {item.variant.stockQuantity <= 3 && item.variant.stockQuantity > 0 && (
+                            <span className="text-[10px] text-amber-300 font-bold flex items-center gap-1 mt-0.5">
+                              ⚡ Only {item.variant.stockQuantity} left
+                            </span>
+                          )}
                         </div>
                         <button
                           onClick={() => removeFromCart(item.variantId)}

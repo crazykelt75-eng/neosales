@@ -230,10 +230,10 @@ export function PaymentInstructions({ order, onDone }: Props) {
         ) : (
           <div>
             <p className="text-xs font-bold text-white mb-0.5">
-              Attach Payment SMS or Bank Transfer Screenshot (Optional)
+              Attach Payment Screenshot (Optional)
             </p>
-            <p className="text-[11px] text-neutral-400 mb-3">
-              Enables priority dispatch before courier cutoff.
+            <p className="text-[11px] text-neutral-300 mb-3">
+              Optional — you can upload a receipt now or simply forward your confirmation SMS directly in WhatsApp!
             </p>
             <input
               type="file"
@@ -247,7 +247,7 @@ export function PaymentInstructions({ order, onDone }: Props) {
               className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2.5 bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl text-xs font-bold text-white cursor-pointer shadow-xs active:scale-95 transition-all"
             >
               <Upload size={15} aria-hidden="true" />
-              <span>{isUploading ? 'Uploading...' : 'Select Screenshot'}</span>
+              <span>{isUploading ? 'Uploading...' : 'Select Screenshot (Optional)'}</span>
             </label>
           </div>
         )}
@@ -265,7 +265,7 @@ export function PaymentInstructions({ order, onDone }: Props) {
           <span>Confirm Order via WhatsApp</span>
           <ExternalLink size={18} aria-hidden="true" />
         </a>
-        <p className="text-[11px] text-neutral-500 text-center mt-2 leading-relaxed">
+        <p className="text-[11px] text-neutral-400 text-center mt-2 leading-relaxed">
           Opens WhatsApp with your pre-formatted order receipt and itemized breakdown ready to send to our sales team.
         </p>
       </div>

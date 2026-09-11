@@ -150,7 +150,7 @@ export function InventoryManager() {
       <div className="bg-white rounded-2xl sm:rounded-3xl border border-neutral-200/90 overflow-hidden shadow-soft">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-neutral-700" aria-label="Product Inventory Table">
-            <thead className="bg-neutral-50 border-b border-neutral-200 text-[11px] font-black text-neutral-500 uppercase tracking-wider">
+            <thead className="bg-neutral-50 border-b border-neutral-200 text-[11px] font-black text-neutral-600 uppercase tracking-wider">
               <tr>
                 <th scope="col" className="p-4">Product Details</th>
                 <th scope="col" className="p-4">Category</th>
@@ -174,7 +174,7 @@ export function InventoryManager() {
                       />
                       <div>
                         <p className="font-extrabold text-neutral-900 text-xs sm:text-sm">{product.title}</p>
-                        <p className="text-[11px] text-neutral-500 line-clamp-1 mt-0.5">
+                        <p className="text-[11px] text-neutral-600 line-clamp-1 mt-0.5">
                           {product.description}
                         </p>
                       </div>
@@ -207,7 +207,7 @@ export function InventoryManager() {
                             </span>
                             <span className="text-neutral-400" aria-hidden="true">|</span>
                             <div className="flex items-center gap-1.5">
-                              <label htmlFor={`stock-${v.id}`} className="text-[10px] text-neutral-500 uppercase font-mono">
+                              <label htmlFor={`stock-${v.id}`} className="text-[10px] text-neutral-600 uppercase font-mono">
                                 Qty:
                               </label>
                               <input

@@ -18,23 +18,60 @@ export function VariantModal() {
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [addedAnimation, setAddedAnimation] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  // Initialize selected variant on product open
+  // Initialize selected variant on product open and handle focus
   useEffect(() => {
     if (product && product.variants.length > 0) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
       const inStock = product.variants.find((v) => v.stockQuantity > 0);
       setSelectedVariant(inStock || product.variants[0]);
       setQuantity(1);
       setActiveImageIdx(0);
       setAddedAnimation(false);
+
+      // Focus first interactive element inside dialog after render
+      setTimeout(() => {
+        const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (focusable && focusable.length > 0) {
+          focusable[0].focus();
+        }
+      }, 50);
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
     }
   }, [product]);
 
-  // Handle Escape key to close modal
+  // Handle Tab focus trapping and Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSelectedProductForModal(null);
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (focusable.length === 0) return;
+
+        const firstEl = focusable[0];
+        const lastEl = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstEl) {
+            e.preventDefault();
+            lastEl.focus();
+          }
+        } else {
+          if (document.activeElement === lastEl) {
+            e.preventDefault();
+            firstEl.focus();
+          }
+        }
       }
     };
     if (product) {
@@ -288,9 +325,9 @@ export function VariantModal() {
                   This option is currently out of stock.
                 </span>
               ) : selectedVariant.stockQuantity <= 3 ? (
-                <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                  <AlertCircle size={15} aria-hidden="true" />
-                  Urgent: Only {selectedVariant.stockQuantity} units left in Francistown storage.
+                <span className="bg-amber-400/15 border border-amber-400/30 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" aria-hidden="true" />
+                  ⚡ Only {selectedVariant.stockQuantity} units left in Francistown storage — order now
                 </span>
               ) : (
                 <span className="text-emerald-400 font-bold flex items-center gap-1.5">

@@ -12,6 +12,8 @@ import {
   MapPin,
   BadgeCheck,
   Quote,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { CUSTOMER_REVIEWS } from '@/lib/mockData';
@@ -195,6 +197,25 @@ export function HeroSpotlight() {
               {slide.product.title}
             </h2>
 
+            {/* Mobile Product Visual Preview (visible on small/tablet screens) */}
+            <div className="block lg:hidden w-full relative rounded-2xl overflow-hidden aspect-[16/9] sm:aspect-[2/1] border border-white/10 shadow-elevated my-2">
+              <img
+                src={slide.product.imageUrls[0]}
+                alt={slide.product.title}
+                className="w-full h-full object-cover"
+                loading="eager"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-transparent" />
+              <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
+                <span className="text-[10px] font-bold bg-neutral-950/80 backdrop-blur-sm px-2.5 py-1 rounded-lg text-neutral-200 border border-white/10">
+                  {slide.product.variants.reduce((s, v) => s + v.stockQuantity, 0)} in stock
+                </span>
+                <span className="text-[10px] font-bold bg-orangeMoney px-2.5 py-1 rounded-lg text-white">
+                  From P{slide.product.basePriceBWP}
+                </span>
+              </div>
+            </div>
+
             {/* Rating summary */}
             <div className="flex items-center gap-3">
               <StarRating rating={Math.round(slide.averageRating)} />
@@ -210,7 +231,7 @@ export function HeroSpotlight() {
               <span className="text-2xl sm:text-3xl font-black text-white font-mono">
                 P{slide.product.basePriceBWP.toFixed(0)}
               </span>
-              <span className="text-xs text-neutral-500">.00 BWP</span>
+              <span className="text-xs text-neutral-400">.00 BWP</span>
             </div>
 
             {/* Featured Customer Review Card */}
@@ -231,7 +252,7 @@ export function HeroSpotlight() {
                     <span className="text-xs font-bold text-neutral-200">
                       {featuredReview.customerName}
                     </span>
-                    <span className="text-[10px] text-neutral-500">{featuredReview.town}</span>
+                    <span className="text-[10px] text-neutral-400">{featuredReview.town}</span>
                     {featuredReview.verified && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400 font-bold">
                         <BadgeCheck size={11} aria-hidden="true" />
@@ -254,7 +275,7 @@ export function HeroSpotlight() {
               >
                 Shop Now
               </Button>
-              <span className="text-[11px] text-neutral-500 hidden sm:block">
+              <span className="text-[11px] text-neutral-400 hidden sm:block">
                 {slide.product.variants.filter((v) => v.stockQuantity > 0).length} variants in stock
               </span>
             </div>
@@ -303,7 +324,16 @@ export function HeroSpotlight() {
 
           {/* Slide Navigation */}
           {slides.length > 1 && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setIsPaused((prev) => !prev)}
+                aria-pressed={isPaused}
+                aria-label={isPaused ? 'Resume auto-play carousel' : 'Pause auto-play carousel'}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-neutral-400 hover:text-white transition-all focus-visible:outline-2 focus-visible:outline-white"
+              >
+                {isPaused ? <Play size={13} className="fill-current" aria-hidden="true" /> : <Pause size={13} className="fill-current" aria-hidden="true" />}
+              </button>
+
               <button
                 onClick={prevSlide}
                 className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-neutral-400 hover:text-white transition-all focus-visible:outline-2 focus-visible:outline-white"

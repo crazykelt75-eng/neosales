@@ -16,7 +16,7 @@ export function SalesMetrics() {
       <section aria-label="Executive Sales Overview" className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-5">
         <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-neutral-200/90 shadow-soft">
           <div className="flex items-center justify-between text-neutral-400 mb-2">
-            <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-neutral-500">
+            <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-neutral-600">
               Total Revenue
             </span>
             <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-black text-xs border border-emerald-200/60">
@@ -33,7 +33,7 @@ export function SalesMetrics() {
 
         <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-neutral-200/90 shadow-soft">
           <div className="flex items-center justify-between text-neutral-400 mb-2">
-            <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-neutral-500">
+            <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-neutral-600">
               Total Orders
             </span>
             <div className="w-8 h-8 rounded-xl bg-neutral-100 text-neutral-700 flex items-center justify-center border border-neutral-200/60">
@@ -43,7 +43,7 @@ export function SalesMetrics() {
           <div className="text-2xl sm:text-3xl font-black text-neutral-950 tracking-tight font-mono">
             {metrics.totalOrders}
           </div>
-          <p className="text-[11px] text-neutral-500 font-semibold mt-1">Across all pipeline stages</p>
+          <p className="text-[11px] text-neutral-600 font-semibold mt-1">Across all pipeline stages</p>
         </div>
 
         <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-neutral-200/90 shadow-soft">
@@ -88,7 +88,7 @@ export function SalesMetrics() {
                 Top-Selling Fragrance Profiles
               </h3>
             </div>
-            <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Volume Sold</span>
+            <span className="text-xs font-bold text-neutral-600 uppercase tracking-wider">Volume Sold</span>
           </div>
 
           {metrics.topScents.length === 0 ? (
@@ -130,7 +130,7 @@ export function SalesMetrics() {
                 Fast-Moving Apparel Sizes
               </h3>
             </div>
-            <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Units Sold</span>
+            <span className="text-xs font-bold text-neutral-600 uppercase tracking-wider">Units Sold</span>
           </div>
 
           {metrics.fastMovingSizes.length === 0 ? (

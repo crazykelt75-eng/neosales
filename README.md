@@ -22,6 +22,14 @@ Everything is priced in **Botswana Pula (BWP)** and rendered as `P280`, `P460`, 
 | Bag drawer | Slide-over from the right, focus-trapped, inline quantity modifiers, delete, line subtotals and a live order summary. |
 | Checkout | Zero-friction guest checkout: name, `+267` validated WhatsApp number, delivery preference, then payment rail. Validates inline with friendly copy and never loses your input (draft persisted per tab). |
 | 1-tap WhatsApp dispatch | Generates an `ORD-8421` reference, records the order, formats a full human-readable receipt and opens `wa.me/267…` with the receipt pre-filled so the customer only has to send it. |
+| Order tracking | `/track` looks an order up with its `ORD-…` reference **and** the last 4 digits of the phone number, then shows a 5-step progress rail with a live "Current" marker, itemised totals, your saved transaction reference, pickup points and a one-tap "ask a question on WhatsApp" link. |
+| Product pages & sharing | Every active product has a static, shareable page at `/p/<slug>` with its own OG/Twitter preview, `Product` JSON-LD (BWP pricing + rating) and the full variant picker — ideal for WhatsApp Status drops. |
+| Saved items | A bookmark on every card and product page, a counter in the header and a slide-over drawer with "add all to bag" and per-item WhatsApp enquiry. Saved products are remembered on the device. |
+| Recently viewed | A horizontal strip under the catalog that resurfaces the last products you opened. |
+| Bag to WhatsApp | Besides checkout, the bag can be sent straight to the seller as a pre-written WhatsApp message when the customer would rather chat first. |
+| Size guide | Measurement tables for shirts, trousers and footwear (in cm, with the "when in doubt, size up" note) reachable from the variant picker. |
+| Offers & promo codes | Live promo field in checkout with validation messages, an "offer" list of the running campaigns, and an automatic **10% bundle discount** when two or more perfumes are in the bag (capped at P200). |
+| Back-in-stock alerts | A sold-out product lets the customer leave their WhatsApp number; the seller gets the request in the admin Growth tab and can notify them in one tap. |
 | Botswana policy layer | Privacy (Data Protection Act), terms of sale and 48-hour exchange policy in a tabbed dialog. |
 
 ### Delivery & payment rails (exactly as quoted at checkout)
@@ -44,11 +52,35 @@ Everything is priced in **Botswana Pula (BWP)** and rendered as `P280`, `P460`, 
 - **Cancel with automatic stock return** — cancelling an order releases every reserved unit back to the shelf, records a reason and moves the order to a cancelled ledger beneath the board. **Reopen order** reverses an accidental cancellation and re-reserves the stock, warning you if inventory is now short.
 - **Payment reference capture** — the mobile money transaction ID can be pasted by the customer on the order-confirmation screen or typed by the seller on the order card. It is stored on the order, included in the WhatsApp receipt and exported in the ledger for reconciliation.
 
+### Customer self-service
+
+- **Track without an account** — guests checkout, guests track. Customers only ever need the order number we already send them plus the last 4 digits of the phone number they typed.
+- **Shareable product pages** — `/p/<slug>` is a real page, not a modal: it can be pasted into WhatsApp Status, indexed by Google and previewed with a photo, price and rating.
+- **Saved items and recently viewed** — the "think about it" path, kept on the device (no accounts, no passwords to forget).
+- **Back-in-stock requests** — the most-asked WhatsApp question ("is the 100ml back?") becomes a queue the seller can work through in seconds.
+
+### Growth tooling (admin **Growth** tab)
+
+| Panel | What it does |
+| --- | --- |
+| Promo codes | Create percentage codes with a minimum spend, a Pula cap, an optional expiry date and a note (`SUMMER10`, `FIRSTORDER`, `FRANCISTOWN` are seeded). Pause or reactivate a campaign without deleting it, and see usage counts at a glance. |
+| Stock alerts | Every back-in-stock request with the customer's number, the variant they want and age; a "Ready to notify" count and one-tap WhatsApp messages (including a follow-up nudge if the item is still out). |
+| Reviews | Live rating average, reviews collected and customers served, plus the incoming buyer feedback feed. |
+
+Discounts are computed in one place (`src/lib/promo.ts`), stored on the order (`discountBWP`, `bundleDiscountBWP`, `promoDiscountBWP`, `promoCode`), shown on the receipt, exported in the ledger CSV and mirrored to Supabase — so the cash-up tally always matches what the customer paid.
+
 ### Seller operations hub (`/admin`)
 - **PIN gate** (`AdminAuthGate`): 4–6 digit PIN (default `2670`, override with `NEXT_PUBLIC_ADMIN_PIN`), session stored in `sessionStorage` so it clears when the tab closes, on-screen keypad for phone-first sellers, and rate limiting — 5 wrong attempts triggers a 60 second lockout with a live countdown.
 - **KPI cards**: Total revenue (Pula), pending payment orders, total stock on hand, low-stock alerts, plus a best-sellers strip.
-- **Order kanban**: columns for *Pending Verification → Payment Confirmed → Dispatched → Completed* with status filters, one-click transitions, a "move back" correction path, a per-order **WhatsApp the customer** link with status-appropriate copy (including a cancellation notice), and a cancelled ledger that shows exactly how many units were returned.
+- **Tabs**: *Order pipeline* · *Cash-up* · *Live inventory* · *Growth* · *Data & backup*, with **Record sale**, **Add product** and **Backup** always one tap from the header.
+- **Order kanban**: columns for *Pending Verification → Payment Confirmed → Dispatched → Completed* with one-click transitions, a "move back" correction path, a per-order **WhatsApp the customer** link with status-appropriate copy (including a cancellation notice), and a cancelled ledger that shows exactly how many units were returned.
+- **Find any order fast**: free-text search across order number, customer name, town, phone digits, **mobile-money transaction reference** and item names, plus status, channel and date-range filters with an active-filter indicator.
+- **Per-order workbench**: an activity timeline (who did what, when), seller notes, a pickup-slot editor (date, one-hour window, collection point), a **transaction reference** field, an A5 **packing slip** built for printing, and the cancel/reopen corrections.
+- **Offline & DM sales**: "Record sale" logs a sale that closed on WhatsApp or in person — it decrements stock, respects the same discount rules and appears in cash-up under the right rail, so the books match reality.
+- **Cash-up & reconciliation**: a 14-day ledger by day and by rail (Orange Money / FNB Pay2Cell / Cash on pickup) separating *collected*, *pending verification* and *cash still to collect*, a chase list of anything older than 24 hours, and one-tap customer follow-ups.
+- **Reorder suggestions**: analytics that rank what to restock using units sold against remaining stock and propose a quantity to order.
 - **Live inventory manager**: search by SKU/title/size/colour, filter by stock level or category, inline `+ / − / +10` adjusters with direct numeric entry, and an instant published/hidden switch per product.
+- **Reconciliation tab**: the cash-up ledger, per-day drill-down, uncollected cash call-outs and the >24h chase queue.
 - **Quick add product**: validated modal that publishes a new catalog item with its opening variant immediately.
 - **Data & backup tab**: export/restore tooling, local-storage footprint, cloud-mirror status, and the reset action (now behind an explicit confirmation).
 
@@ -148,19 +180,28 @@ src/
 │   ├── layout.tsx            # Metadata, preconnects, toast + store providers
 │   ├── page.tsx              # Server page: OnlineStore JSON-LD (BWP) + storefront
 │   ├── admin/page.tsx        # PIN-gated seller workspace (noindex)
-│   └── globals.css           # Dark-luxury tokens, focus rings, reduced motion
+│   ├── track/page.tsx        # Guest order tracking (reference + last-4 phone)
+│   ├── p/[slug]/page.tsx     # Static shareable product pages (OG + Product JSON-LD)
+│   └── globals.css           # Dark-luxury tokens, focus rings, reduced motion, print styles
 ├── components/
 │   ├── storefront/           # Header, HeroSpotlight, ProductCard, VariantModal, CartDrawer,
-│   │                         # StorefrontHome, Footer, LegalModal
-│   ├── checkout/             # CheckoutModal (3-step flow), PaymentInstructions
+│   │                         # StorefrontHome, Footer, LegalModal, OrderTracker, ProductDetail,
+│   │                         # SavedItemsDrawer (+ SizeGuideModal), RecentlyViewed
+│   ├── checkout/             # CheckoutModal (promo codes, 3-step flow), PaymentInstructions
 │   ├── admin/                # AdminAuthGate, AdminDashboard, SalesMetrics, OrderKanban,
-│   │                         # InventoryManager, AddProductModal
-│   └── ui/                   # Button, Badge, Modal, Toast, Skeleton, StarRating, FontLoader
-├── context/StoreContext.tsx  # Catalog, bag, orders, inventory, admin session, KPIs
+│   │                         # InventoryManager, AddProductModal, ReconciliationPanel,
+│   │                         # OfflineSaleModal, PackingSlip, DataBackupPanel, GrowthPanel,
+│   │                         # CancelOrderDialog
+│   └── ui/                   # Button, Badge, Modal, Toast, Skeleton, StarRating, FontLoader,
+│                             # ServiceWorkerRegistrar
+├── context/StoreContext.tsx  # Catalog, bag, orders, reviews, promos, alerts, saved items, KPIs
 ├── hooks/useFocusTrap.ts     # WCAG dialog focus trap + scroll lock
-├── lib/                      # constants, format (BWP), product, whatsapp, storage,
-│                             # imageUtils, supabaseClient, mockData
+├── lib/                      # constants, format (BWP), product, whatsapp, storage, analytics,
+│                             # promo, export, imageUtils, supabaseClient, mockData
 └── types/index.ts            # Domain model (Product, ProductVariant, CartItem, Order, …)
+public/
+├── manifest.webmanifest      # Installable PWA (standalone, midnight theme, Track shortcut)
+└── sw.js                     # Offline shell: network-first pages, cache-first assets
 ```
 
 ---
@@ -181,7 +222,9 @@ src/
 
 - Botswana-targeted metadata, Open Graph and Twitter cards (`Botswana perfumes`, `Francistown fashion`, `Orange Money online shopping`).
 - **Schema.org `OnlineStore`** JSON-LD with an `OfferCatalog`: every product carries `priceCurrency: "BWP"`, availability, aggregate rating and shipping rates for pickup (P0), local courier (P45) and nationwide (P80), with `areaServed` covering Francistown, Gaborone, Maun, Kasane, Palapye and Mahalapye.
-- `public/robots.txt` disallows `/admin`; `public/sitemap.xml` lists the storefront, catalog and delivery anchors.
+- Every product also emits its own `Product` JSON-LD (BWP price range, availability, rating) on its `/p/<slug>` page, with canonical URLs and `en_BW` Open Graph previews sized for WhatsApp.
+- `public/robots.txt` disallows `/admin` and `/track`; `public/sitemap.xml` lists the storefront, catalog, delivery anchors, the tracking page and all six product pages.
+- **Installable PWA** — `manifest.webmanifest` plus a service worker give the storefront an app icon and an offline shell, so the catalog still opens on patchy mobile data.
 - Catalog cards are server-rendered, so product names and Pula prices appear in the initial HTML.
 
 ---
@@ -191,12 +234,22 @@ src/
 ```bash
 npm run lint         # ✅ no ESLint warnings or errors
 npm run type-check   # ✅ no errors (strict mode)
-npm run build        # ✅ compiled + statically exported, no warnings
+npm run build        # ✅ compiled + statically exported (12 pages), no warnings
+npm run preview      # serves out/ with Cloudflare-Pages routing on :3000
 ```
 
-Pure helpers (Pula formatting, `+267` phone validation/normalisation, receipt generation, stock
-summaries) were additionally exercised with an ad-hoc `tsx` script during development and all
-assertions passed.
+`npm run build` statically exports **12 pages**: the storefront, `/admin`, `/track` and one page per
+active product.
+
+Pure logic is covered by ad-hoc `tsx` scripts (`/tmp/tier0-check.ts`, `/tmp/phase234-check.ts`) —
+Pula formatting, `+267` validation/normalisation, receipt generation, stock summaries, cancellation
+stock return, backup round-trips, the cash-up ledger by rail, order search/filters, reorder
+suggestions, customer LTV grouping, bundle maths and promo-code validation — **73 assertions, all
+passing**.
+
+> Browser automation was not available in this environment, so interaction flows were verified through
+> static analysis, type checking, production builds and direct HTTP smoke tests of the exported
+> routes rather than scripted clicks.
 
 Demo PIN for `/admin` is **2670** (or whatever `NEXT_PUBLIC_ADMIN_PIN` is set to).
 

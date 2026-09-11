@@ -3,23 +3,46 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  CalendarClock,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Copy,
+  Filter,
+  History,
   MapPin,
   MessageCircle,
   Phone,
+  Printer,
   RotateCcw,
+  Search,
+  Send,
+  StickyNote,
   Truck,
+  X,
   XCircle,
 } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
-import { Order, OrderStatus, WorkflowStatus, ORDER_STATUS_ORDER } from '@/types';
+import { Order, OrderStatus, SalesChannel, WorkflowStatus, ORDER_STATUS_ORDER } from '@/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CancelOrderDialog } from '@/components/admin/CancelOrderDialog';
-import { DELIVERY_OPTIONS_BY_ID, ORDER_STATUS_META, PAYMENT_OPTIONS_BY_ID } from '@/lib/constants';
+import { PackingSlip } from '@/components/admin/PackingSlip';
+import {
+  DELIVERY_OPTIONS_BY_ID,
+  ORDER_STATUS_META,
+  PAYMENT_OPTIONS_BY_ID,
+  PICKUP_WINDOWS,
+  SELLER_CONFIG,
+} from '@/lib/constants';
+import {
+  EMPTY_ORDER_FILTERS,
+  OrderFilters,
+  filterOrders,
+  hasActiveOrderFilters,
+  todayDateKey,
+} from '@/lib/analytics';
 import { formatBWP, formatDateTime, formatRelativeTime } from '@/lib/format';
 import { buildStatusUpdateLink } from '@/lib/whatsapp';
 
@@ -34,6 +57,12 @@ const PAYMENT_BADGES: Record<Order['paymentMethod'], { label: string; variant: '
   orange_money: { label: 'Orange Money', variant: 'new' },
   fnb_pay2cell: { label: 'FNB Pay2Cell', variant: 'info' },
   cash_on_pickup: { label: 'Cash on pickup', variant: 'amber' },
+};
+
+const CHANNEL_LABELS: Record<SalesChannel, string> = {
+  website: 'Website',
+  whatsapp: 'WhatsApp / DM',
+  walk_in: 'In person',
 };
 
 const NEXT_STATUS: Partial<Record<WorkflowStatus, WorkflowStatus>> = {
@@ -60,14 +89,19 @@ const NEXT_ACTION_ICONS: Partial<Record<WorkflowStatus, React.ReactNode>> = {
   completed: <CheckCircle2 size={15} aria-hidden="true" />,
 };
 
-/** Order fulfilment board: one column per workflow status, plus a cancelled ledger. */
+/** Order fulfilment board with search, filters, pickup slots and activity logs. */
 export function OrderKanban() {
   const { orders, updateOrderStatus, cancelOrder, reopenOrder, setOrderPaymentReference } = useStore();
-  const [statusFilter, setStatusFilter] = useState<WorkflowStatus | 'all'>('all');
+
+  const [filters, setFilters] = useState<OrderFilters>(EMPTY_ORDER_FILTERS);
   const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
+  const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
 
   const workflowOrders = useMemo(() => orders.filter((order) => order.status !== 'cancelled'), [orders]);
   const cancelledOrders = useMemo(() => orders.filter((order) => order.status === 'cancelled'), [orders]);
+
+  const visibleOrders = useMemo(() => filterOrders(workflowOrders, filters), [filters, workflowOrders]);
+  const filtersActive = hasActiveOrderFilters(filters);
 
   const columns = useMemo(
     () =>
@@ -75,54 +109,171 @@ export function OrderKanban() {
         status,
         label: ORDER_STATUS_META[status].label,
         description: ORDER_STATUS_META[status].description,
-        orders: workflowOrders.filter((order) => order.status === status),
+        orders: visibleOrders.filter((order) => order.status === status),
       })),
-    [workflowOrders]
+    [visibleOrders]
   );
-
-  const visibleColumns = statusFilter === 'all' ? columns : columns.filter((column) => column.status === statusFilter);
 
   return (
     <section aria-label="Order verification board" className="space-y-4">
-      {/* Status filter */}
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter orders by status">
-        <button
-          type="button"
-          onClick={() => setStatusFilter('all')}
-          aria-pressed={statusFilter === 'all'}
-          className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wide transition-colors ${
-            statusFilter === 'all'
-              ? 'border-orangeMoney/50 bg-orangeMoney/15 text-white'
-              : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
-          }`}
-        >
-          All active ({workflowOrders.length})
-        </button>
+      {/* Search & filters */}
+      <div className="space-y-3 rounded-2xl border border-white/10 bg-surface/70 p-3.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={filters.query}
+              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              placeholder="Search order number, customer, phone, town or transaction ID…"
+              aria-label="Search orders"
+              className="w-full rounded-xl border border-white/12 bg-black/30 py-2.5 pl-10 pr-10 text-sm text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+            />
+            {filters.query && (
+              <button
+                type="button"
+                onClick={() => setFilters((current) => ({ ...current, query: '' }))}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-neutral-400 transition-colors hover:text-white"
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
+            )}
+          </div>
 
-        {columns.map((column) => (
-          <button
-            key={column.status}
-            type="button"
-            onClick={() => setStatusFilter(column.status)}
-            aria-pressed={statusFilter === column.status}
-            className={`rounded-xl border px-3 py-2 text-2xs font-bold uppercase tracking-wide transition-colors ${
-              statusFilter === column.status
-                ? 'border-orangeMoney/50 bg-orangeMoney/15 text-white'
-                : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
-            }`}
-          >
-            {column.label} ({column.orders.length})
-          </button>
-        ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="filter-from" className="text-2xs font-bold uppercase tracking-wide text-neutral-400">
+                From
+              </label>
+              <input
+                id="filter-from"
+                type="date"
+                value={filters.fromDate}
+                max={filters.toDate || todayDateKey()}
+                onChange={(event) => setFilters((current) => ({ ...current, fromDate: event.target.value }))}
+                className="rounded-xl border border-white/12 bg-black/30 px-2.5 py-2 text-xs text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="filter-to" className="text-2xs font-bold uppercase tracking-wide text-neutral-400">
+                To
+              </label>
+              <input
+                id="filter-to"
+                type="date"
+                value={filters.toDate}
+                min={filters.fromDate || undefined}
+                onChange={(event) => setFilters((current) => ({ ...current, toDate: event.target.value }))}
+                className="rounded-xl border border-white/12 bg-black/30 px-2.5 py-2 text-xs text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+              />
+            </div>
+
+            <select
+              value={filters.channel}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, channel: event.target.value as SalesChannel | 'all' }))
+              }
+              aria-label="Filter by sales channel"
+              className="rounded-xl border border-white/12 bg-black/30 px-2.5 py-2 text-xs text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+            >
+              <option value="all">All channels</option>
+              <option value="website">Website</option>
+              <option value="whatsapp">WhatsApp / DM</option>
+              <option value="walk_in">In person</option>
+            </select>
+
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={() => setFilters(EMPTY_ORDER_FILTERS)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-2xs font-bold uppercase tracking-wide text-neutral-300 transition-colors hover:border-white/25 hover:text-white"
+              >
+                <RotateCcw size={12} aria-hidden="true" />
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter orders by status">
+          <Filter size={13} className="text-neutral-400" aria-hidden="true" />
+
+          {(
+            [
+              { id: 'all' as const, label: `All (${workflowOrders.length})` },
+              { id: 'open' as const, label: 'Open' },
+            ]
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setFilters((current) => ({ ...current, status: option.id }))}
+              aria-pressed={filters.status === option.id}
+              className={`rounded-xl border px-3 py-1.5 text-2xs font-bold uppercase tracking-wide transition-colors ${
+                filters.status === option.id
+                  ? 'border-orangeMoney/50 bg-orangeMoney/15 text-white'
+                  : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+
+          {ORDER_STATUS_ORDER.map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setFilters((current) => ({ ...current, status }))}
+              aria-pressed={filters.status === status}
+              className={`rounded-xl border px-3 py-1.5 text-2xs font-bold uppercase tracking-wide transition-colors ${
+                filters.status === status
+                  ? 'border-orangeMoney/50 bg-orangeMoney/15 text-white'
+                  : 'border-white/10 bg-white/[0.04] text-neutral-300 hover:text-white'
+              }`}
+            >
+              {ORDER_STATUS_META[status].label} ({workflowOrders.filter((order) => order.status === status).length})
+            </button>
+          ))}
+        </div>
+
+        {filtersActive && (
+          <p aria-live="polite" className="text-2xs text-neutral-400">
+            Showing {visibleOrders.length} of {workflowOrders.length} active orders
+          </p>
+        )}
       </div>
 
-      {workflowOrders.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-surface/70 p-6 text-center text-xs text-neutral-400">
-          No active orders right now. Orders placed through the storefront appear here instantly.
-        </p>
+      {visibleOrders.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-surface/70 p-8 text-center">
+          <p className="text-sm font-bold text-white">
+            {filtersActive ? 'No orders match these filters' : 'No active orders right now'}
+          </p>
+          <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-neutral-400">
+            {filtersActive
+              ? 'Try a wider date range or clear the filters to see everything.'
+              : 'Orders placed through the storefront, WhatsApp or in person all appear here.'}
+          </p>
+          {filtersActive && (
+            <Button
+              variant="secondary"
+              size="md"
+              className="mt-4"
+              onClick={() => setFilters(EMPTY_ORDER_FILTERS)}
+              leftIcon={<RotateCcw size={14} />}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-          {visibleColumns.map((column) => (
+          {columns.map((column) => (
             <div
               key={column.status}
               className={`flex flex-col gap-3 rounded-2xl border bg-surface/60 p-3 ${COLUMN_ACCENTS[column.status]}`}
@@ -137,7 +288,7 @@ export function OrderKanban() {
 
               {column.orders.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-2xs text-neutral-400">
-                  Nothing here right now
+                  Nothing here
                 </p>
               ) : (
                 <ul className="space-y-3">
@@ -148,6 +299,7 @@ export function OrderKanban() {
                       onTransition={updateOrderStatus}
                       onSaveReference={setOrderPaymentReference}
                       onRequestCancel={setOrderToCancel}
+                      onPrint={setOrderToPrint}
                     />
                   ))}
                 </ul>
@@ -166,54 +318,74 @@ export function OrderKanban() {
 
           <ul className="mt-3 space-y-2">
             {cancelledOrders.map((order) => (
-              <CancelledOrderRow key={order.id} order={order} onReopen={reopenOrder} />
+              <CancelledOrderRow key={order.id} order={order} onReopen={reopenOrder} onPrint={setOrderToPrint} />
             ))}
           </ul>
         </details>
       )}
 
-      <CancelOrderDialog
-        order={orderToCancel}
-        onClose={() => setOrderToCancel(null)}
-        onConfirm={cancelOrder}
-      />
+      <CancelOrderDialog order={orderToCancel} onClose={() => setOrderToCancel(null)} onConfirm={cancelOrder} />
+      <PackingSlip order={orderToPrint} onClose={() => setOrderToPrint(null)} />
     </section>
   );
 }
+
+/* -------------------------------------------------------------------------- *
+ * Order card
+ * -------------------------------------------------------------------------- */
 
 interface OrderCardProps {
   order: Order;
   onTransition: (orderId: string, status: OrderStatus, notes?: string) => void;
   onSaveReference: (orderId: string, reference: string) => void;
   onRequestCancel: (order: Order) => void;
+  onPrint: (order: Order) => void;
 }
 
-function OrderCard({ order, onTransition, onSaveReference, onRequestCancel }: OrderCardProps) {
+function OrderCard({ order, onTransition, onSaveReference, onRequestCancel, onPrint }: OrderCardProps) {
+  const { addOrderNote, setOrderPickupSlot } = useStore();
+
+  const [referenceDraft, setReferenceDraft] = useState(order.paymentReference ?? '');
+  const [isEditingReference, setIsEditingReference] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isNoteOpen, setIsNoteOpen] = useState(false);
+  const [isSlotOpen, setIsSlotOpen] = useState(false);
+  const [slotDate, setSlotDate] = useState(order.pickupSlot?.date ?? todayDateKey());
+  const [slotWindow, setSlotWindow] = useState(order.pickupSlot?.window ?? PICKUP_WINDOWS[0]);
+  const [slotPoint, setSlotPoint] = useState(order.pickupSlot?.point ?? SELLER_CONFIG.pickupPoints[0]);
+
   const delivery = DELIVERY_OPTIONS_BY_ID[order.customer.deliveryPreference];
   const payment = PAYMENT_OPTIONS_BY_ID[order.paymentMethod];
   const paymentBadge = PAYMENT_BADGES[order.paymentMethod];
   const workflowStatus = order.status as WorkflowStatus;
   const nextStatus = NEXT_STATUS[workflowStatus];
   const previousStatus = PREVIOUS_STATUS[workflowStatus];
+  const isPickup = order.customer.deliveryPreference === 'francistown_pickup';
+  const channel = order.channel ?? 'website';
+  const timeline = order.timeline ?? [];
 
-  const [referenceDraft, setReferenceDraft] = useState(order.paymentReference ?? '');
-  const [isEditingReference, setIsEditingReference] = useState(false);
-
-  const itemsSummary =
-    order.items.length === 1
-      ? `${order.items[0].quantity} × ${order.items[0].productTitle}`
-      : `${order.items.length} items · ${order.items.reduce((sum, item) => sum + item.quantity, 0)} units`;
+  const handleSaveSlot = () => {
+    setOrderPickupSlot(order.id, { date: slotDate, window: slotWindow, point: slotPoint });
+    setIsSlotOpen(false);
+  };
 
   return (
     <li className="rounded-2xl border border-white/10 bg-black/30 p-3.5">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="font-mono text-xs font-black text-orangeMoney">{order.orderNumber}</p>
-          <p className="mt-0.5 text-xs font-bold text-white">{order.customer.name}</p>
+          <p className="mt-0.5 truncate text-xs font-bold text-white">{order.customer.name}</p>
         </div>
-        <Badge variant={paymentBadge.variant} icon={null} className="text-[10px]">
-          {paymentBadge.label}
-        </Badge>
+        <div className="flex flex-shrink-0 flex-col items-end gap-1">
+          <Badge variant={paymentBadge.variant} icon={null} className="text-[10px]">
+            {paymentBadge.label}
+          </Badge>
+          {channel !== 'website' && (
+            <Badge variant="neutral" icon={null} className="text-[10px]">
+              {CHANNEL_LABELS[channel]}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <p className="mt-1.5 text-2xs text-neutral-400" title={formatDateTime(order.createdAt)}>
@@ -235,6 +407,16 @@ function OrderCard({ order, onTransition, onSaveReference, onRequestCancel }: Or
       </ul>
 
       <dl className="mt-2.5 space-y-1 border-t border-white/[0.07] pt-2.5 text-2xs">
+        {(order.discountBWP ?? 0) > 0 && (
+          <div className="flex items-center justify-between">
+            <dt className="text-emerald-200">
+              Discount{order.promoCode ? ` · ${order.promoCode}` : ''}
+            </dt>
+            <dd className="font-mono text-emerald-200" data-price>
+              -{formatBWP(order.discountBWP ?? 0)}
+            </dd>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <dt className="text-neutral-400">Delivery {delivery?.feeBWP ? '' : '(free)'}</dt>
           <dd className="font-mono text-neutral-200">{delivery?.feeBWP ? formatBWP(delivery.feeBWP) : 'P0'}</dd>
@@ -259,6 +441,118 @@ function OrderCard({ order, onTransition, onSaveReference, onRequestCancel }: Or
           </a>
         </p>
       </div>
+
+      {/* Pickup slot */}
+      {isPickup && (
+        <div className="mt-2.5 rounded-xl border border-white/10 bg-white/[0.02] p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-neutral-400">
+              <CalendarClock size={12} aria-hidden="true" />
+              Pickup slot
+            </span>
+            {order.pickupSlot && !isSlotOpen && (
+              <button
+                type="button"
+                onClick={() => setIsSlotOpen(true)}
+                className="text-2xs font-semibold text-neutral-400 underline-offset-2 transition-colors hover:text-white hover:underline"
+              >
+                Change
+              </button>
+            )}
+          </div>
+
+          {isSlotOpen ? (
+            <div className="mt-2 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="sr-only" htmlFor={`slot-date-${order.id}`}>
+                  Pickup date
+                </label>
+                <input
+                  id={`slot-date-${order.id}`}
+                  type="date"
+                  value={slotDate}
+                  min={todayDateKey()}
+                  onChange={(event) => setSlotDate(event.target.value)}
+                  className="w-full rounded-lg border border-white/12 bg-black/40 px-2.5 py-2 text-2xs text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+                />
+
+                <label className="sr-only" htmlFor={`slot-window-${order.id}`}>
+                  Pickup window
+                </label>
+                <select
+                  id={`slot-window-${order.id}`}
+                  value={slotWindow}
+                  onChange={(event) => setSlotWindow(event.target.value)}
+                  className="w-full rounded-lg border border-white/12 bg-black/40 px-2.5 py-2 text-2xs text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+                >
+                  {PICKUP_WINDOWS.map((window) => (
+                    <option key={window} value={window}>
+                      {window}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="sr-only" htmlFor={`slot-point-${order.id}`}>
+                Pickup point
+              </label>
+              <select
+                id={`slot-point-${order.id}`}
+                value={slotPoint}
+                onChange={(event) => setSlotPoint(event.target.value)}
+                className="w-full rounded-lg border border-white/12 bg-black/40 px-2.5 py-2 text-2xs text-white focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+              >
+                {SELLER_CONFIG.pickupPoints.map((point) => (
+                  <option key={point} value={point}>
+                    {point}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSaveSlot}
+                  className="flex-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-2 text-2xs font-bold uppercase tracking-wide text-emerald-200 transition-colors hover:bg-emerald-500/25"
+                >
+                  Save slot
+                </button>
+                {order.pickupSlot && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderPickupSlot(order.id, null);
+                      setIsSlotOpen(false);
+                    }}
+                    className="rounded-lg border border-white/12 px-2.5 py-2 text-2xs font-semibold text-neutral-300 transition-colors hover:text-white"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsSlotOpen(false)}
+                  className="rounded-lg border border-white/12 px-2.5 py-2 text-2xs font-semibold text-neutral-300 transition-colors hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : order.pickupSlot ? (
+            <p className="mt-1.5 text-2xs font-semibold text-emerald-100">
+              {order.pickupSlot.date} · {order.pickupSlot.window} · {order.pickupSlot.point}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsSlotOpen(true)}
+              className="mt-1.5 w-full rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-2 text-2xs font-bold uppercase tracking-wide text-neutral-200 transition-colors hover:border-orangeMoney/50 hover:text-white"
+            >
+              Set collection window
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Payment reference — the audit trail for mobile money reconciliation */}
       <div className="mt-2.5 rounded-xl border border-white/10 bg-white/[0.02] p-2.5">
@@ -316,21 +610,101 @@ function OrderCard({ order, onTransition, onSaveReference, onRequestCancel }: Or
         </p>
       )}
 
-      <p className="mt-2.5 text-2xs text-neutral-400">
-        {payment?.label ?? order.paymentMethod} · {itemsSummary}
-      </p>
+      {/* Activity log */}
+      {timeline.length > 0 && (
+        <details className="mt-2.5 rounded-xl border border-white/10 bg-white/[0.02] px-2.5 py-2">
+          <summary className="flex cursor-pointer items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-neutral-400">
+            <History size={12} aria-hidden="true" />
+            Activity ({timeline.length})
+            <ChevronDown size={12} aria-hidden="true" />
+          </summary>
+
+          <ol className="mt-2 space-y-1.5 border-l border-white/10 pl-3">
+            {[...timeline].reverse().map((event) => (
+              <li key={event.id} className="relative text-2xs leading-relaxed">
+                <span
+                  aria-hidden="true"
+                  className="absolute -left-[15px] top-1.5 h-1.5 w-1.5 rounded-full bg-orangeMoney"
+                />
+                <span className="font-semibold text-neutral-200">{event.label}</span>
+                <span className="ml-1.5 text-neutral-400">
+                  {formatDateTime(event.at)} · {event.actor}
+                </span>
+                {event.detail && <span className="block text-neutral-400">{event.detail}</span>}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+
+      {/* Add note */}
+      {isNoteOpen ? (
+        <div className="mt-2.5 flex items-center gap-1.5">
+          <label className="sr-only" htmlFor={`note-${order.id}`}>
+            New note for {order.orderNumber}
+          </label>
+          <input
+            id={`note-${order.id}`}
+            value={noteDraft}
+            onChange={(event) => setNoteDraft(event.target.value)}
+            placeholder="e.g. Called, no answer"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && noteDraft.trim()) {
+                addOrderNote(order.id, noteDraft);
+                setNoteDraft('');
+                setIsNoteOpen(false);
+              }
+            }}
+            className="min-w-0 flex-1 rounded-lg border border-white/12 bg-black/40 px-2.5 py-2 text-2xs text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              addOrderNote(order.id, noteDraft);
+              setNoteDraft('');
+              setIsNoteOpen(false);
+            }}
+            disabled={!noteDraft.trim()}
+            aria-label="Save note"
+            className="flex-shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/15 p-2 text-emerald-200 transition-colors hover:bg-emerald-500/25 disabled:opacity-40"
+          >
+            <Send size={12} aria-hidden="true" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsNoteOpen(true)}
+          className="mt-2.5 inline-flex items-center gap-1.5 text-2xs font-semibold text-neutral-400 transition-colors hover:text-white"
+        >
+          <StickyNote size={12} aria-hidden="true" />
+          Add a note
+        </button>
+      )}
 
       {/* Actions */}
       <div className="mt-3 space-y-2">
-        <a
-          href={buildStatusUpdateLink(order, nextStatus ?? workflowStatus)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-whatsapp/40 bg-whatsapp/10 text-2xs font-bold uppercase tracking-wide text-whatsapp transition-colors hover:bg-whatsapp/20 focus-visible:outline-2 focus-visible:outline-whatsapp"
-        >
-          <MessageCircle size={14} aria-hidden="true" />
-          WhatsApp {order.customer.name.split(' ')[0]}
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href={buildStatusUpdateLink(order, nextStatus ?? workflowStatus)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-xl border border-whatsapp/40 bg-whatsapp/10 text-2xs font-bold uppercase tracking-wide text-whatsapp transition-colors hover:bg-whatsapp/20 focus-visible:outline-2 focus-visible:outline-whatsapp"
+          >
+            <MessageCircle size={14} aria-hidden="true" />
+            WhatsApp
+          </a>
+
+          <button
+            type="button"
+            onClick={() => onPrint(order)}
+            aria-label={`Print packing slip for ${order.orderNumber}`}
+            className="inline-flex min-h-[40px] flex-shrink-0 items-center justify-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3 text-2xs font-bold uppercase tracking-wide text-neutral-200 transition-colors hover:bg-white/[0.12] hover:text-white"
+          >
+            <Printer size={14} aria-hidden="true" />
+            Slip
+          </button>
+        </div>
 
         {nextStatus ? (
           <Button
@@ -407,9 +781,10 @@ function ReferenceChip({ reference }: { reference: string }) {
 interface CancelledOrderRowProps {
   order: Order;
   onReopen: (orderId: string) => void;
+  onPrint: (order: Order) => void;
 }
 
-function CancelledOrderRow({ order, onReopen }: CancelledOrderRowProps) {
+function CancelledOrderRow({ order, onReopen, onPrint }: CancelledOrderRowProps) {
   const units = order.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -439,6 +814,16 @@ function CancelledOrderRow({ order, onReopen }: CancelledOrderRowProps) {
           <MessageCircle size={12} aria-hidden="true" />
           Notify
         </a>
+
+        <button
+          type="button"
+          onClick={() => onPrint(order)}
+          aria-label={`Print slip for ${order.orderNumber}`}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-2.5 text-2xs font-bold uppercase tracking-wide text-neutral-200 transition-colors hover:bg-white/[0.12] hover:text-white"
+        >
+          <Printer size={12} aria-hidden="true" />
+          Slip
+        </button>
 
         <button
           type="button"

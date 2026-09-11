@@ -80,9 +80,13 @@ export function buildOrdersCsv(orders: Order[]): string {
     'Town',
     'Address / Pickup Point',
     'Delivery Preference',
+    'Channel',
     'Payment Method',
     'Payment Reference',
     'Subtotal (BWP)',
+    'Bundle Discount (BWP)',
+    'Promo Code',
+    'Promo Discount (BWP)',
     'Delivery Fee (BWP)',
     'Total (BWP)',
     'Units',
@@ -103,9 +107,13 @@ export function buildOrdersCsv(orders: Order[]): string {
       order.customer.town,
       order.customer.address,
       DELIVERY_OPTIONS_BY_ID[order.customer.deliveryPreference]?.label ?? order.customer.deliveryPreference,
+      order.channel ?? 'website',
       PAYMENT_OPTIONS_BY_ID[order.paymentMethod]?.label ?? order.paymentMethod,
       order.paymentReference ?? '',
       order.subtotalBWP.toFixed(2),
+      (order.bundleDiscountBWP ?? 0).toFixed(2),
+      order.promoCode ?? '',
+      (order.promoDiscountBWP ?? 0).toFixed(2),
       order.deliveryFeeBWP.toFixed(2),
       order.totalAmountBWP.toFixed(2),
       order.items.reduce((sum, item) => sum + item.quantity, 0),
@@ -167,14 +175,19 @@ export function buildCatalogCsv(products: Product[]): string {
  * Full backup / restore
  * -------------------------------------------------------------------------- */
 
-/** Builds a restorable snapshot of the seller's catalog and order history. */
-export function buildBackup(products: Product[], orders: Order[]): StoreBackup {
+/** Builds a restorable snapshot of everything the seller owns. */
+export function buildBackup(
+  products: Product[],
+  orders: Order[],
+  extras: Pick<StoreBackup, 'reviews' | 'promoCodes' | 'stockAlerts'> = {}
+): StoreBackup {
   return {
     app: 'neosales',
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     products,
     orders,
+    ...extras,
   };
 }
 
@@ -279,6 +292,9 @@ export function parseBackup(rawText: string): BackupParseResult {
       exportedAt: candidate.exportedAt ?? new Date().toISOString(),
       products,
       orders,
+      reviews: Array.isArray(candidate.reviews) ? candidate.reviews : undefined,
+      promoCodes: Array.isArray(candidate.promoCodes) ? candidate.promoCodes : undefined,
+      stockAlerts: Array.isArray(candidate.stockAlerts) ? candidate.stockAlerts : undefined,
     },
   };
 }

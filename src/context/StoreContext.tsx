@@ -15,17 +15,24 @@ import {
   DeliveryPreference,
   Order,
   OrderCustomer,
+  OrderEvent,
   OrderStatus,
   PaymentMethod,
+  PickupSlot,
   Product,
   ProductVariant,
+  PromoCode,
+  SalesChannel,
+  StockAlert,
   StoreBackup,
   StoreMetrics,
 } from '@/types';
 import { CUSTOMER_REVIEWS, INITIAL_ORDERS, INITIAL_PRODUCTS } from '@/lib/mockData';
 import { DELIVERY_OPTIONS_BY_ID } from '@/lib/constants';
 import { STORAGE_KEYS, clearStorefrontCache, readStorage, removeStorage, writeStorage } from '@/lib/storage';
-import { generateOrderNumber } from '@/lib/whatsapp';
+import { generateOrderNumber, isValidBotswanaPhone, normaliseBotswanaPhone } from '@/lib/whatsapp';
+import { ORDER_STATUS_META } from '@/lib/constants';
+import { DEFAULT_PROMO_CODES, getAutomaticBundleDiscount, validatePromoCode } from '@/lib/promo';
 import { findVariant, getCartCount, getCartSubtotal, getVariantLabel } from '@/lib/product';
 import {
   fetchLiveOrders,
@@ -50,6 +57,30 @@ interface AdminAttemptState {
 interface CheckoutInput {
   customer: OrderCustomer;
   paymentMethod: PaymentMethod;
+  /** Promo code applied in the bag, if the customer used one. */
+  promoCode?: string;
+  /** Set by the seller when logging a WhatsApp/DM sale rather than a web order. */
+  channel?: SalesChannel;
+}
+
+interface OfflineSaleLine {
+  product: Product;
+  variant: ProductVariant;
+  quantity: number;
+}
+
+export interface OfflineSaleInput {
+  lines: OfflineSaleLine[];
+  customerName: string;
+  customerPhone: string;
+  town: string;
+  address: string;
+  channel: Exclude<SalesChannel, 'website'>;
+  paymentMethod: PaymentMethod;
+  deliveryPreference: DeliveryPreference;
+  /** `true` when the goods already changed hands (walk-in, cash on pickup). */
+  isFulfilled: boolean;
+  note?: string;
 }
 
 interface StoreContextValue {
@@ -77,6 +108,9 @@ interface StoreContextValue {
   setOrderPaymentReference: (orderId: string, reference: string) => void;
   cancelOrder: (orderId: string, reason?: string) => void;
   reopenOrder: (orderId: string) => void;
+  addOrderNote: (orderId: string, note: string) => void;
+  setOrderPickupSlot: (orderId: string, slot: PickupSlot | null) => void;
+  recordOfflineSale: (input: OfflineSaleInput) => Order;
   selectedDelivery: DeliveryPreference;
   setSelectedDelivery: (preference: DeliveryPreference) => void;
 
@@ -89,6 +123,28 @@ interface StoreContextValue {
 
   // Backup & restore
   importBackup: (backup: StoreBackup) => void;
+
+  // Promo codes
+  promoCodes: PromoCode[];
+  checkPromoCode: (code: string) => { ok: boolean; message: string; discountBWP: number };
+  savePromoCode: (promo: PromoCode) => void;
+  deletePromoCode: (promoId: string) => void;
+
+  // Reviews
+  addReview: (review: Omit<CustomerReview, 'id' | 'date'>) => boolean;
+
+  // Back-in-stock alerts
+  stockAlerts: StockAlert[];
+  subscribeStockAlert: (product: Product, variant: ProductVariant, phone: string) => boolean;
+  markStockAlertNotified: (alertId: string) => void;
+  removeStockAlert: (alertId: string) => void;
+
+  // Saved items & browsing history
+  savedProductIds: string[];
+  toggleSaved: (productId: string) => void;
+  isSaved: (productId: string) => boolean;
+  recentlyViewedIds: string[];
+  markViewed: (productId: string) => void;
 
   // Admin session
   isAdminUnlocked: boolean;
@@ -104,6 +160,9 @@ interface StoreContextValue {
   isCartOpen: boolean;
   openCart: () => void;
   closeCart: () => void;
+  isSavedOpen: boolean;
+  openSaved: () => void;
+  closeSaved: () => void;
   isCheckoutOpen: boolean;
   openCheckout: () => void;
   closeCheckout: () => void;
@@ -122,11 +181,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  const [reviews, setReviews] = useState<CustomerReview[]>(CUSTOMER_REVIEWS);
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(DEFAULT_PROMO_CODES);
+  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
+  const [savedProductIds, setSavedProductIds] = useState<string[]>([]);
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState<string[]>([]);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [isCloudSync, setIsCloudSync] = useState(false);
 
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isSavedOpen, setIsSavedOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryPreference>(
     'francistown_pickup'
@@ -140,6 +205,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const productsRef = useRef(products);
   const cartRef = useRef(cart);
   const ordersRef = useRef(orders);
+  const reviewsRef = useRef(reviews);
+  const promoCodesRef = useRef(promoCodes);
+  const stockAlertsRef = useRef(stockAlerts);
 
   useEffect(() => {
     productsRef.current = products;
@@ -150,6 +218,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     ordersRef.current = orders;
   }, [orders]);
+  useEffect(() => {
+    reviewsRef.current = reviews;
+  }, [reviews]);
+  useEffect(() => {
+    promoCodesRef.current = promoCodes;
+  }, [promoCodes]);
+  useEffect(() => {
+    stockAlertsRef.current = stockAlerts;
+  }, [stockAlerts]);
 
   /* ------------------------------------------------------------------ *
    * Committers — always persist to storage alongside React state.
@@ -204,6 +281,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }, []);
     setCart(reconciledCart);
     cartRef.current = reconciledCart;
+
+    // Customer-submitted reviews layer on top of the seeded ones.
+    const storedReviews = readStorage<CustomerReview[]>(STORAGE_KEYS.reviews, []);
+    if (storedReviews.length > 0) {
+      setReviews([...storedReviews, ...CUSTOMER_REVIEWS]);
+      reviewsRef.current = [...storedReviews, ...CUSTOMER_REVIEWS];
+    }
+
+    const storedPromos = readStorage<PromoCode[]>(STORAGE_KEYS.promoCodes, []);
+    if (storedPromos.length > 0) {
+      setPromoCodes(storedPromos);
+      promoCodesRef.current = storedPromos;
+    }
+
+    const storedAlerts = readStorage<StockAlert[]>(STORAGE_KEYS.stockAlerts, []);
+    if (storedAlerts.length > 0) {
+      setStockAlerts(storedAlerts);
+      stockAlertsRef.current = storedAlerts;
+    }
+
+    const storedSaved = readStorage<string[]>(STORAGE_KEYS.savedProducts, []);
+    if (storedSaved.length > 0) setSavedProductIds(storedSaved);
+
+    const storedViewed = readStorage<string[]>(STORAGE_KEYS.recentlyViewed, []);
+    if (storedViewed.length > 0) setRecentlyViewedIds(storedViewed);
 
     setHasHydrated(true);
 
@@ -411,6 +513,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const clearCart = useCallback(() => commitCart([]), [commitCart]);
 
   /* ------------------------------------------------------------------ *
+   * Order timeline
+   * ------------------------------------------------------------------ */
+
+  /** Builds a new activity-log entry with a collision-safe id. */
+  const buildEvent = useCallback(
+    (label: string, actor: OrderEvent['actor'], detail?: string): OrderEvent => ({
+      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      at: new Date().toISOString(),
+      label,
+      actor,
+      detail: detail?.trim() ? detail.trim() : undefined,
+    }),
+    []
+  );
+
+  /* ------------------------------------------------------------------ *
    * Inventory helpers
    * ------------------------------------------------------------------ */
 
@@ -513,11 +631,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
    * ------------------------------------------------------------------ */
 
   const createOrder = useCallback(
-    ({ customer, paymentMethod }: CheckoutInput): Order => {
+    ({ customer, paymentMethod, promoCode, channel = 'website' }: CheckoutInput): Order => {
       const items = cartRef.current;
       const subtotalBWP = getCartSubtotal(items);
       const deliveryFeeBWP = DELIVERY_OPTIONS_BY_ID[customer.deliveryPreference]?.feeBWP ?? 0;
       const now = Date.now();
+
+      // Recompute discounts at order time so the stored totals are authoritative.
+      const bundle = getAutomaticBundleDiscount(items);
+      const bundleDiscountBWP = bundle?.amountBWP ?? 0;
+
+      const promoResult = promoCode
+        ? validatePromoCode(promoCode, subtotalBWP, promoCodesRef.current)
+        : null;
+      const promoDiscountBWP = promoResult?.ok ? promoResult.discountBWP : 0;
+
+      const discountBWP = bundleDiscountBWP + promoDiscountBWP;
 
       const order: Order = {
         id: `ord-${now}`,
@@ -534,10 +663,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           lineTotalBWP: item.unitPriceBWP * item.quantity,
         })),
         subtotalBWP,
+        discountBWP,
+        bundleDiscountBWP,
+        promoDiscountBWP,
+        promoCode: promoResult?.ok ? promoResult.promo.code : undefined,
         deliveryFeeBWP,
-        totalAmountBWP: subtotalBWP + deliveryFeeBWP,
+        totalAmountBWP: Math.max(0, subtotalBWP - discountBWP + deliveryFeeBWP),
         paymentMethod,
         status: 'pending_verification',
+        channel,
+        timeline: [buildEvent('Order placed on the website', 'customer')],
         createdAt: new Date().toISOString(),
       };
 
@@ -555,7 +690,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       return order;
     },
-    [applyStockDelta, clearCart, commitOrders]
+    [applyStockDelta, buildEvent, clearCart, commitOrders]
   );
 
   const updateOrderStatus = useCallback(
@@ -565,12 +700,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const next = ordersRef.current.map((order) => {
         if (order.id !== orderId) return order;
 
+        const isVerification = status === 'payment_confirmed' && !order.verifiedAt;
+        const event = buildEvent(
+          `Status set to ${ORDER_STATUS_META[status].label}`,
+          'seller',
+          order.paymentReference ? `Reference ${order.paymentReference}` : undefined
+        );
+
         updatedOrder = {
           ...order,
           status,
           verificationNotes: notes?.trim() ? notes.trim() : order.verificationNotes,
-          verifiedAt:
-            status === 'payment_confirmed' && !order.verifiedAt ? new Date().toISOString() : order.verifiedAt,
+          verifiedAt: isVerification ? new Date().toISOString() : order.verifiedAt,
+          timeline: [...(order.timeline ?? []), event],
         };
 
         return updatedOrder;
@@ -587,7 +729,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         description: notes?.trim() ? notes.trim() : undefined,
       });
     },
-    [commitOrders, showToast]
+    [buildEvent, commitOrders, showToast]
   );
 
   /** Attaches the mobile money transaction ID to an order (customer or seller). */
@@ -597,7 +739,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const next = ordersRef.current.map((order) => {
         if (order.id !== orderId) return order;
-        updatedOrder = { ...order, paymentReference: reference.trim() };
+
+        updatedOrder = {
+          ...order,
+          paymentReference: reference.trim(),
+          timeline: [
+            ...(order.timeline ?? []),
+            buildEvent(
+              reference.trim() ? 'Payment reference captured' : 'Payment reference cleared',
+              'seller',
+              reference.trim()
+            ),
+          ],
+        };
+
         return updatedOrder;
       });
 
@@ -614,7 +769,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [commitOrders, showToast]
+    [buildEvent, commitOrders, showToast]
   );
 
   /**
@@ -636,6 +791,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         status: 'cancelled',
         cancelledAt: new Date().toISOString(),
         cancelReason: reason?.trim() ? reason.trim() : 'Cancelled by seller',
+        timeline: [
+          ...(target.timeline ?? []),
+          buildEvent('Order cancelled — stock returned', 'seller', reason?.trim() || undefined),
+        ],
       };
 
       commitOrders(ordersRef.current.map((order) => (order.id === orderId ? cancelledOrder : order)));
@@ -655,7 +814,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         description: `${returnedUnits} unit${returnedUnits === 1 ? '' : 's'} returned to stock.`,
       });
     },
-    [applyStockDelta, commitOrders, showToast]
+    [applyStockDelta, buildEvent, commitOrders, showToast]
   );
 
   /**
@@ -672,6 +831,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         status: 'pending_verification',
         cancelledAt: undefined,
         cancelReason: undefined,
+        timeline: [...(target.timeline ?? []), buildEvent('Order reopened — stock reserved again', 'seller')],
       };
 
       commitOrders(ordersRef.current.map((order) => (order.id === orderId ? reopened : order)));
@@ -698,8 +858,299 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             : 'Reserved stock taken off the shelf again.',
       });
     },
-    [applyStockDelta, commitOrders, showToast]
+    [applyStockDelta, buildEvent, commitOrders, showToast]
   );
+
+  /** Free-text activity note ("called, no answer") appended to the order log. */
+  const addOrderNote = useCallback(
+    (orderId: string, note: string) => {
+      if (!note.trim()) return;
+
+      let updatedOrder: Order | undefined;
+
+      const next = ordersRef.current.map((order) => {
+        if (order.id !== orderId) return order;
+        updatedOrder = {
+          ...order,
+          timeline: [...(order.timeline ?? []), buildEvent('Seller note', 'seller', note)],
+        };
+        return updatedOrder;
+      });
+
+      if (!updatedOrder) return;
+      commitOrders(next);
+      showToast({ type: 'success', title: 'Note added to order' });
+    },
+    [buildEvent, commitOrders, showToast]
+  );
+
+  /** Agrees a collection window for a Francistown pickup. */
+  const setOrderPickupSlot = useCallback(
+    (orderId: string, slot: PickupSlot | null) => {
+      let updatedOrder: Order | undefined;
+
+      const next = ordersRef.current.map((order) => {
+        if (order.id !== orderId) return order;
+
+        updatedOrder = {
+          ...order,
+          pickupSlot: slot ?? undefined,
+          timeline: [
+            ...(order.timeline ?? []),
+            buildEvent(
+              slot ? 'Pickup slot agreed' : 'Pickup slot cleared',
+              'seller',
+              slot ? `${slot.date} · ${slot.window} · ${slot.point}` : undefined
+            ),
+          ],
+        };
+
+        return updatedOrder;
+      });
+
+      if (!updatedOrder) return;
+      commitOrders(next);
+
+      showToast({
+        type: slot ? 'success' : 'info',
+        title: slot ? `Pickup slot set for ${updatedOrder.orderNumber}` : 'Pickup slot cleared',
+        description: slot ? `${slot.window} at ${slot.point}` : undefined,
+      });
+    },
+    [buildEvent, commitOrders, showToast]
+  );
+
+  /**
+   * Logs a sale that closed on WhatsApp, in a DM or in person so the website's
+   * stock stays the single source of truth across every channel.
+   */
+  const recordOfflineSale = useCallback(
+    (input: OfflineSaleInput): Order => {
+      const now = Date.now();
+
+      const items = input.lines.map((line, index) => ({
+        id: `item-${now}-${index}`,
+        productId: line.product.id,
+        variantId: line.variant.id,
+        productTitle: line.product.title,
+        variantLabel: getVariantLabel(line.variant),
+        unitPriceBWP: line.variant.priceBWP,
+        quantity: line.quantity,
+        lineTotalBWP: line.variant.priceBWP * line.quantity,
+      }));
+
+      const subtotalBWP = items.reduce((sum, item) => sum + item.lineTotalBWP, 0);
+      const deliveryFeeBWP = DELIVERY_OPTIONS_BY_ID[input.deliveryPreference]?.feeBWP ?? 0;
+      const status: OrderStatus = input.isFulfilled ? 'completed' : 'payment_confirmed';
+
+      const order: Order = {
+        id: `ord-${now}`,
+        orderNumber: generateOrderNumber(),
+        customer: {
+          name: input.customerName.trim() || 'Walk-in customer',
+          phone: input.customerPhone.trim() || '+26700000000',
+          town: input.town.trim() || 'Francistown',
+          address: input.address.trim() || 'Recorded at the pickup point',
+          deliveryPreference: input.deliveryPreference,
+        },
+        items,
+        subtotalBWP,
+        discountBWP: 0,
+        deliveryFeeBWP,
+        totalAmountBWP: subtotalBWP + deliveryFeeBWP,
+        paymentMethod: input.paymentMethod,
+        status,
+        channel: input.channel,
+        verifiedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        timeline: [
+          buildEvent(
+            `Sale recorded manually (${input.channel === 'walk_in' ? 'in person' : 'WhatsApp / DM'})`,
+            'seller',
+            input.note
+          ),
+        ],
+      };
+
+      commitOrders([order, ...ordersRef.current]);
+
+      // Manual sales take stock off the shelf the same way a web order does.
+      applyStockDelta((variant) => {
+        const line = input.lines.find((candidate) => candidate.variant.id === variant.id);
+        if (!line) return null;
+        return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - line.quantity) };
+      });
+
+      void persistOrder(order);
+
+      showToast({
+        type: 'success',
+        title: `Sale recorded · ${order.orderNumber}`,
+        description: `${items.reduce((sum, item) => sum + item.quantity, 0)} units taken off stock.`,
+      });
+
+      return order;
+    },
+    [applyStockDelta, buildEvent, commitOrders, showToast]
+  );
+
+  /* ------------------------------------------------------------------ *
+   * Promo codes, reviews, stock alerts, saved items
+   * ------------------------------------------------------------------ */
+
+  const commitPromoCodes = useCallback((next: PromoCode[]) => {
+    promoCodesRef.current = next;
+    setPromoCodes(next);
+    writeStorage(STORAGE_KEYS.promoCodes, next);
+  }, []);
+
+  const checkPromoCode = useCallback((code: string) => {
+    const result = validatePromoCode(code, getCartSubtotal(cartRef.current), promoCodesRef.current);
+    return result.ok
+      ? { ok: true, message: result.message, discountBWP: result.discountBWP }
+      : { ok: false, message: result.message, discountBWP: 0 };
+  }, []);
+
+  const savePromoCode = useCallback(
+    (promo: PromoCode) => {
+      const exists = promoCodesRef.current.some((candidate) => candidate.id === promo.id);
+      const next = exists
+        ? promoCodesRef.current.map((candidate) => (candidate.id === promo.id ? promo : candidate))
+        : [{ ...promo }, ...promoCodesRef.current];
+
+      commitPromoCodes(next);
+      showToast({ type: 'success', title: `Promo ${promo.code} saved` });
+    },
+    [commitPromoCodes, showToast]
+  );
+
+  const deletePromoCode = useCallback(
+    (promoId: string) => {
+      const promo = promoCodesRef.current.find((candidate) => candidate.id === promoId);
+      commitPromoCodes(promoCodesRef.current.filter((candidate) => candidate.id !== promoId));
+      showToast({ type: 'info', title: 'Promo removed', description: promo?.code });
+    },
+    [commitPromoCodes, showToast]
+  );
+
+  /** Adds a buyer review. Verified-buyer submissions arrive with an order number. */
+  const addReview = useCallback(
+    (review: Omit<CustomerReview, 'id' | 'date'>): boolean => {
+      const entry: CustomerReview = {
+        ...review,
+        id: `rev-${Date.now()}`,
+        date: new Date().toISOString().slice(0, 10),
+      };
+
+      const next = [entry, ...reviewsRef.current];
+      reviewsRef.current = next;
+      setReviews(next);
+      writeStorage(STORAGE_KEYS.reviews, next.filter((item) => !CUSTOMER_REVIEWS.some((seed) => seed.id === item.id)));
+
+      showToast({
+        type: 'success',
+        title: 'Thank you for the review',
+        description: review.verified ? 'Published with a verified buyer badge.' : 'Published on the product page.',
+      });
+
+      return true;
+    },
+    [showToast]
+  );
+
+  /** Registers a back-in-stock request and returns false when the input is invalid. */
+  const subscribeStockAlert = useCallback(
+    (product: Product, variant: ProductVariant, phone: string): boolean => {
+      if (!isValidBotswanaPhone(phone)) return false;
+
+      const normalised = `+${normaliseBotswanaPhone(phone)}`;
+      const alreadyWaiting = stockAlertsRef.current.some(
+        (alert) => alert.variantId === variant.id && alert.phone === normalised
+      );
+
+      if (alreadyWaiting) {
+        showToast({
+          type: 'info',
+          title: 'You are already on the list',
+          description: `We will WhatsApp you when ${product.title} is back.`,
+        });
+        return true;
+      }
+
+      const alert: StockAlert = {
+        id: `alert-${Date.now()}`,
+        productId: product.id,
+        productTitle: product.title,
+        variantId: variant.id,
+        variantLabel: getVariantLabel(variant),
+        phone: normalised,
+        createdAt: new Date().toISOString(),
+      };
+
+      const next = [alert, ...stockAlertsRef.current];
+      stockAlertsRef.current = next;
+      setStockAlerts(next);
+      writeStorage(STORAGE_KEYS.stockAlerts, next);
+
+      showToast({
+        type: 'success',
+        title: 'We will WhatsApp you',
+        description: `${product.title} · ${alert.variantLabel}`,
+      });
+
+      return true;
+    },
+    [showToast]
+  );
+
+  const markStockAlertNotified = useCallback((alertId: string) => {
+    const next = stockAlertsRef.current.map((alert) =>
+      alert.id === alertId ? { ...alert, notifiedAt: new Date().toISOString() } : alert
+    );
+    stockAlertsRef.current = next;
+    setStockAlerts(next);
+    writeStorage(STORAGE_KEYS.stockAlerts, next);
+  }, []);
+
+  const removeStockAlert = useCallback((alertId: string) => {
+    const next = stockAlertsRef.current.filter((alert) => alert.id !== alertId);
+    stockAlertsRef.current = next;
+    setStockAlerts(next);
+    writeStorage(STORAGE_KEYS.stockAlerts, next);
+  }, []);
+
+  const toggleSaved = useCallback(
+    (productId: string) => {
+      const isCurrentlySaved = savedProductIds.includes(productId);
+      const next = isCurrentlySaved
+        ? savedProductIds.filter((id) => id !== productId)
+        : [productId, ...savedProductIds];
+
+      setSavedProductIds(next);
+      writeStorage(STORAGE_KEYS.savedProducts, next);
+
+      const product = productsRef.current.find((candidate) => candidate.id === productId);
+      showToast({
+        type: 'info',
+        title: isCurrentlySaved ? 'Removed from saved' : 'Saved for later',
+        description: product?.title,
+      });
+    },
+    [savedProductIds, showToast]
+  );
+
+  const isSaved = useCallback(
+    (productId: string) => savedProductIds.includes(productId),
+    [savedProductIds]
+  );
+
+  const markViewed = useCallback((productId: string) => {
+    setRecentlyViewedIds((current) => {
+      const next = [productId, ...current.filter((id) => id !== productId)].slice(0, 8);
+      writeStorage(STORAGE_KEYS.recentlyViewed, next);
+      return next;
+    });
+  }, []);
 
   /* ------------------------------------------------------------------ *
    * Backup & restore
@@ -720,6 +1171,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       );
       if (reconciledCart.length !== cartRef.current.length) commitCart(reconciledCart);
 
+      if (backup.reviews?.length) {
+        reviewsRef.current = backup.reviews;
+        setReviews(backup.reviews);
+        writeStorage(STORAGE_KEYS.reviews, backup.reviews);
+      }
+
+      if (backup.promoCodes?.length) {
+        promoCodesRef.current = backup.promoCodes;
+        setPromoCodes(backup.promoCodes);
+        writeStorage(STORAGE_KEYS.promoCodes, backup.promoCodes);
+      }
+
+      if (backup.stockAlerts?.length) {
+        stockAlertsRef.current = backup.stockAlerts;
+        setStockAlerts(backup.stockAlerts);
+        writeStorage(STORAGE_KEYS.stockAlerts, backup.stockAlerts);
+      }
+
       showToast({
         type: 'success',
         title: 'Backup restored',
@@ -728,8 +1197,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [commitCart, commitOrders, commitProducts, showToast]
   );
-
-  const reviews = CUSTOMER_REVIEWS;
 
   const getProductReviews = useCallback(
     (productId: string) => reviews.filter((review) => review.productId === productId),
@@ -782,6 +1249,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       totalRevenueBWP: orders
         .filter((order) => revenueStatuses.includes(order.status))
         .reduce((sum, order) => sum + order.totalAmountBWP, 0),
+      offlineOrderCount: orders.filter(
+        (order) => order.status !== 'cancelled' && (order.channel ?? 'website') !== 'website'
+      ).length,
+      cancelledValueBWP: orders
+        .filter((order) => order.status === 'cancelled')
+        .reduce((sum, order) => sum + order.totalAmountBWP, 0),
       totalOrders: orders.length,
       pendingVerificationCount: orders.filter((order) => order.status === 'pending_verification').length,
       dispatchedCount: orders.filter((order) => order.status === 'dispatched').length,
@@ -822,8 +1295,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setOrderPaymentReference,
       cancelOrder,
       reopenOrder,
+      addOrderNote,
+      setOrderPickupSlot,
+      recordOfflineSale,
       selectedDelivery,
       setSelectedDelivery,
+
+      promoCodes,
+      checkPromoCode,
+      savePromoCode,
+      deletePromoCode,
+      addReview,
+      stockAlerts,
+      subscribeStockAlert,
+      markStockAlertNotified,
+      removeStockAlert,
+      savedProductIds,
+      toggleSaved,
+      isSaved,
+      recentlyViewedIds,
+      markViewed,
 
       addProduct,
       setVariantStock,
@@ -844,6 +1335,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       isCartOpen,
       openCart: () => setIsCartOpen(true),
       closeCart: () => setIsCartOpen(false),
+      isSavedOpen,
+      openSaved: () => {
+        setIsCartOpen(false);
+        setIsSavedOpen(true);
+      },
+      closeSaved: () => setIsSavedOpen(false),
       isCheckoutOpen,
       openCheckout: () => {
         setIsCartOpen(false);
@@ -875,7 +1372,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setOrderPaymentReference,
       cancelOrder,
       reopenOrder,
+      addOrderNote,
+      setOrderPickupSlot,
+      recordOfflineSale,
       selectedDelivery,
+      promoCodes,
+      checkPromoCode,
+      savePromoCode,
+      deletePromoCode,
+      addReview,
+      stockAlerts,
+      subscribeStockAlert,
+      markStockAlertNotified,
+      removeStockAlert,
+      savedProductIds,
+      toggleSaved,
+      isSaved,
+      recentlyViewedIds,
+      markViewed,
       addProduct,
       setVariantStock,
       adjustVariantStock,
@@ -889,6 +1403,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       lockAdmin,
       activeProduct,
       isCartOpen,
+      isSavedOpen,
       isCheckoutOpen,
       hasHydrated,
       isCloudSync,

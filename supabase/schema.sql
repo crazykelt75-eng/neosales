@@ -127,6 +127,10 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_location   VARCHAR(320) GENERATED ALWAYS AS (customer_town || ' - ' || customer_address) STORED,
     payment_method      payment_method NOT NULL,
     subtotal_bwp        NUMERIC(10, 2) NOT NULL CHECK (subtotal_bwp >= 0),
+    discount_bwp        NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (discount_bwp >= 0),
+    bundle_discount_bwp NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (bundle_discount_bwp >= 0),
+    promo_code          VARCHAR(32),
+    promo_discount_bwp  NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (promo_discount_bwp >= 0),
     delivery_fee_bwp    NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (delivery_fee_bwp >= 0),
     total_amount_bwp    NUMERIC(10, 2) NOT NULL CHECK (total_amount_bwp >= 0),
     status              order_status NOT NULL DEFAULT 'pending_verification',
@@ -136,9 +140,13 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_reference   VARCHAR(64),
     cancelled_at        TIMESTAMPTZ,
     cancel_reason       VARCHAR(160),
+    channel             VARCHAR(16) NOT NULL DEFAULT 'website',
+    pickup_date         DATE,
+    pickup_window       VARCHAR(24),
+    pickup_point        VARCHAR(96),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT orders_total_matches_components
-        CHECK (total_amount_bwp = subtotal_bwp + delivery_fee_bwp)
+        CHECK (total_amount_bwp = subtotal_bwp - discount_bwp + delivery_fee_bwp)
 );
 
 CREATE INDEX IF NOT EXISTS orders_status_created_idx
@@ -242,8 +250,14 @@ SELECT
     o.delivery_location,
     o.payment_method,
     o.subtotal_bwp,
+    o.discount_bwp,
+    o.bundle_discount_bwp,
+    o.promo_code,
     o.delivery_fee_bwp,
     o.total_amount_bwp,
+    o.channel,
+    o.pickup_date,
+    o.pickup_window,
     o.status,
     o.verification_notes,
     o.verified_at,

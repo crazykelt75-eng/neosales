@@ -46,7 +46,8 @@ const BACKUP_STALE_DAYS = 7;
 
 /** Export, restore and danger-zone tooling for the seller's local data. */
 export function DataBackupPanel() {
-  const { products, orders, importBackup, resetDemoData, isCloudSync } = useStore();
+  const { products, orders, importBackup, resetDemoData, isCloudSync, reviews, promoCodes, stockAlerts } =
+    useStore();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [stamp, setStamp] = useState<BackupStamp | null>(null);
@@ -113,7 +114,7 @@ export function DataBackupPanel() {
   const handleExportBackup = () => {
     downloadFile(
       timestampedFilename('neosales-backup', 'json'),
-      serialiseBackup(buildBackup(products, orders)),
+      serialiseBackup(buildBackup(products, orders, { reviews, promoCodes, stockAlerts })),
       'application/json'
     );
     recordBackup({ products: products.length, orders: orders.length });
@@ -307,7 +308,10 @@ export function DataBackupPanel() {
                 </p>
                 <p className="mt-1 text-2xs leading-relaxed text-neutral-200">
                   <span className="font-semibold text-white">{preview.filename}</span> ·{' '}
-                  {preview.backup.products.length} products · {preview.backup.orders.length} orders · exported{' '}
+                  {preview.backup.products.length} products · {preview.backup.orders.length} orders
+                  {preview.backup.reviews?.length ? ` · ${preview.backup.reviews.length} reviews` : ''}
+                  {preview.backup.promoCodes?.length ? ` · ${preview.backup.promoCodes.length} promo codes` : ''}
+                  {' · exported '}
                   {formatRelativeTime(preview.backup.exportedAt)}
                 </p>
               </div>

@@ -154,3 +154,166 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Printable packing slip / waybill
+   The on-screen preview sits inside the modal; the print copy is portaled to
+   <body> so we can hide the whole application and print the slip alone.
+   --------------------------------------------------------------------------- */
+
+.packing-slip-portal {
+  display: none;
+}
+
+.packing-slip {
+  font-family: var(--font-jakarta);
+  color: #111827;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.packing-slip__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 2px solid #111827;
+  padding-bottom: 8px;
+}
+
+.packing-slip__brand {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #07080c;
+}
+
+.packing-slip__dot {
+  color: #ff6600;
+}
+
+.packing-slip__order {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.packing-slip__meta {
+  text-align: right;
+}
+
+.packing-slip__muted {
+  color: #6b7280;
+}
+
+.packing-slip__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.packing-slip__strong {
+  font-weight: 700;
+}
+
+.packing-slip__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.packing-slip__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.packing-slip__table th {
+  border-bottom: 1px solid #d1d5db;
+  padding: 4px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #6b7280;
+  text-align: left;
+}
+
+.packing-slip__table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 5px 6px;
+  vertical-align: top;
+}
+
+.packing-slip__qty {
+  width: 34px;
+  text-align: center;
+}
+
+.packing-slip__sku {
+  width: 30%;
+  color: #4b5563;
+}
+
+.packing-slip__amount {
+  width: 70px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.packing-slip__totals {
+  margin-top: 10px;
+  margin-left: auto;
+  width: 220px;
+}
+
+.packing-slip__totals p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.packing-slip__total {
+  border-top: 2px solid #111827;
+  margin-top: 4px;
+  padding-top: 4px !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.packing-slip__footer {
+  margin-top: 16px;
+  border-top: 1px dashed #9ca3af;
+  padding-top: 8px;
+}
+
+@media print {
+  /* Print only the slip: hide every top-level node except the slip portal. */
+  body > *:not(.packing-slip-portal) {
+    display: none !important;
+  }
+
+  .packing-slip-portal {
+    display: block !important;
+  }
+
+  .packing-slip-portal .packing-slip {
+    padding: 10mm;
+    color: #000;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  @page {
+    size: A5;
+    margin: 8mm;
+  }
+}

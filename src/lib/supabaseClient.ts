@@ -55,7 +55,11 @@ interface OrderRow {
   delivery_location: string | null;
   payment_method: PaymentMethod;
   subtotal_bwp: number | string;
-  delivery_fee_bwp: number | string;
+  discount_bwp: number | string | null;
+  bundle_discount_bwp: number | string | null;
+  promo_code: string | null;
+  promo_discount_bwp: number | string | null;
+  delivery_fee_bwp: number | string | string | number;
   total_amount_bwp: number | string;
   status: OrderStatus;
   verified_at: string | null;
@@ -132,6 +136,7 @@ export async function fetchLiveOrders(): Promise<Order[] | null> {
     .select(
       `id, order_number, customer_name, customer_phone, customer_town, customer_address,
        delivery_preference, delivery_location, payment_method, subtotal_bwp,
+       discount_bwp, bundle_discount_bwp, promo_code, promo_discount_bwp,
        delivery_fee_bwp, total_amount_bwp, status, verified_at, payment_reference,
        verification_notes, cancelled_at, cancel_reason, created_at,
        order_items (
@@ -168,6 +173,10 @@ export async function fetchLiveOrders(): Promise<Order[] | null> {
         lineTotalBWP: Number(item.line_total_bwp),
       })),
       subtotalBWP: Number(row.subtotal_bwp),
+      discountBWP: Number(row.discount_bwp ?? 0),
+      bundleDiscountBWP: Number(row.bundle_discount_bwp ?? 0),
+      promoCode: row.promo_code ?? undefined,
+      promoDiscountBWP: Number(row.promo_discount_bwp ?? 0),
       deliveryFeeBWP: Number(row.delivery_fee_bwp),
       totalAmountBWP: Number(row.total_amount_bwp),
       paymentMethod: row.payment_method,
@@ -201,12 +210,18 @@ export async function persistOrder(order: Order): Promise<void> {
         delivery_location: `${order.customer.town} - ${order.customer.address}`,
         payment_method: order.paymentMethod,
         subtotal_bwp: order.subtotalBWP,
+        discount_bwp: order.discountBWP ?? 0,
+        bundle_discount_bwp: order.bundleDiscountBWP ?? 0,
+        promo_code: order.promoCode ?? null,
+        promo_discount_bwp: order.promoDiscountBWP ?? 0,
         delivery_fee_bwp: order.deliveryFeeBWP,
         total_amount_bwp: order.totalAmountBWP,
         status: order.status,
         payment_reference: order.paymentReference ?? null,
         cancelled_at: order.cancelledAt ?? null,
         cancel_reason: order.cancelReason ?? null,
+        pickup_date: order.pickupSlot?.date ?? null,
+        pickup_window: order.pickupSlot?.window ?? null,
       })
       .select('id')
       .single();
@@ -244,6 +259,8 @@ export async function syncOrderStatus(order: Order): Promise<void> {
         payment_reference: order.paymentReference ?? null,
         cancelled_at: order.cancelledAt ?? null,
         cancel_reason: order.cancelReason ?? null,
+        pickup_date: order.pickupSlot?.date ?? null,
+        pickup_window: order.pickupSlot?.window ?? null,
       })
       .eq('order_number', order.orderNumber);
   } catch {

@@ -24,6 +24,20 @@ export const SELLER_CONFIG: SellerConfig = {
 export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || 'https://neosales.crazykelt75.workers.dev';
 
+/** IANA zone used for every date bucket, cash-up and pickup window. */
+export const BOTSWANA_TIME_ZONE = 'Africa/Gaborone';
+
+/** Default stock alerts and promo behaviour live on the seller config. */
+export const PICKUP_WINDOWS = [
+  '09:00 – 10:00',
+  '10:00 – 11:00',
+  '11:00 – 12:00',
+  '12:00 – 13:00',
+  '14:00 – 15:00',
+  '15:00 – 16:00',
+  '16:00 – 17:00',
+] as const;
+
 /** Botswana Pula formatting helpers rely on this symbol. */
 export const CURRENCY_CODE = 'BWP';
 export const CURRENCY_SYMBOL = 'P';

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "deploy:pages": "npm run build && wrangler pages deploy out --project-name neosales"
+    "deploy:pages": "npm run build && wrangler pages deploy out --project-name neosales",
+    "preview": "node scripts/serve-export.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.6",

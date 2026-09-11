@@ -3,6 +3,7 @@ import './globals.css';
 import { StoreProvider } from '@/context/StoreContext';
 import { ToastProvider } from '@/components/ui/Toast';
 import { FontLoader } from '@/components/ui/FontLoader';
+import { ServiceWorkerRegistrar } from '@/components/ui/ServiceWorkerRegistrar';
 import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
@@ -56,6 +57,12 @@ export const metadata: Metadata = {
       'Free Francistown pickups and nationwide courier delivery. Orange Money & FNB Pay2Cell accepted.',
     images: ['/products/rouge-1.jpg'],
   },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'NeoSales',
+    statusBarStyle: 'black-translucent',
+  },
   robots: {
     index: true,
     follow: true,
@@ -85,6 +92,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
       <body className="min-h-screen bg-midnight font-sans text-white antialiased selection:bg-orangeMoney/30 selection:text-orangeMoney-light">
         <FontLoader />
+        <ServiceWorkerRegistrar />
         <ToastProvider>
           <StoreProvider>{children}</StoreProvider>
         </ToastProvider>

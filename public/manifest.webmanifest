@@ -1,0 +1,25 @@
+{
+  "name": "NeoSales Botswana — Perfumes & Summer Apparel",
+  "short_name": "NeoSales",
+  "description": "Authentic extrait perfumes and curated summer apparel delivered across Botswana. Pay with Orange Money or FNB Pay2Cell.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07080c",
+  "theme_color": "#07080c",
+  "lang": "en-BW",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    {
+      "src": "/products/rouge-1.jpg",
+      "sizes": "600x900",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Track my order", "url": "/track" },
+    { "name": "Shop collection", "url": "/#catalog" }
+  ]
+}

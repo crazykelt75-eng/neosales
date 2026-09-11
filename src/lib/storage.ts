@@ -13,6 +13,11 @@ export const STORAGE_KEYS = {
   adminAttempts: 'neosales.admin.attempts',
   checkoutDraft: 'neosales.checkout.draft',
   lastBackup: 'neosales.lastBackup',
+  reviews: 'neosales.reviews.v1',
+  promoCodes: 'neosales.promos.v1',
+  stockAlerts: 'neosales.stockAlerts.v1',
+  savedProducts: 'neosales.saved.v1',
+  recentlyViewed: 'neosales.recentlyViewed.v1',
 } as const;
 
 function getStore(kind: 'local' | 'session'): Storage | null {

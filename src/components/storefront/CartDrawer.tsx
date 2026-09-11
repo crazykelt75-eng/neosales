@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Minus, Plus, ShoppingBag, Trash2, Truck, X } from 'lucide-react';
+import { Bookmark, Minus, MessageCircle, Plus, ShoppingBag, Trash2, Truck, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Button } from '@/components/ui/Button';
 import { formatBWP } from '@/lib/format';
 import { getOptimizedImageUrl } from '@/lib/imageUtils';
-import { findVariant } from '@/lib/product';
+import { findVariant, getCartSubtotal } from '@/lib/product';
+import { SELLER_CONFIG } from '@/lib/constants';
 
 const TITLE_ID = 'bag-drawer-title';
 
@@ -29,6 +30,9 @@ export function CartDrawer() {
     decrementCartItem,
     removeFromCart,
     openCheckout,
+    savedProductIds,
+    openSaved,
+    promoCodes,
   } = useStore();
 
   const [isMounted, setIsMounted] = useState(false);
@@ -70,14 +74,26 @@ export function CartDrawer() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={closeCart}
-            aria-label="Close bag"
-            className="rounded-xl border border-white/10 bg-white/[0.05] p-2 text-neutral-300 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
-          >
-            <X size={17} aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openSaved}
+              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-2.5 text-2xs font-bold uppercase tracking-wide text-neutral-300 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+              aria-label={`View saved items, ${savedProductIds.length} saved`}
+            >
+              <Bookmark size={14} aria-hidden="true" />
+              {savedProductIds.length > 0 ? `Saved ${savedProductIds.length}` : 'Saved'}
+            </button>
+
+            <button
+              type="button"
+              onClick={closeCart}
+              aria-label="Close bag"
+              className="rounded-xl border border-white/10 bg-white/[0.05] p-2 text-neutral-300 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+            >
+              <X size={17} aria-hidden="true" />
+            </button>
+          </div>
         </header>
 
         {/* Items */}
@@ -224,10 +240,62 @@ export function CartDrawer() {
             <p className="mt-2 text-center text-2xs leading-relaxed text-neutral-400">
               Pay with Orange Money or FNB Pay2Cell · Courier delivery quoted next step
             </p>
+
+            <a
+              href={buildBagEnquiryLink(cart, cartSubtotal, promoCodes)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2.5 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-whatsapp/40 bg-whatsapp/10 text-xs font-bold text-whatsapp transition-colors hover:bg-whatsapp/20 focus-visible:outline-2 focus-visible:outline-whatsapp"
+            >
+              <MessageCircle size={15} aria-hidden="true" />
+              Send this bag on WhatsApp instead
+            </a>
+
+            <p className="mt-1.5 text-center text-2xs leading-relaxed text-neutral-400">
+              Not ready to check out? Send the list to us and we will hold the stock for you.
+            </p>
           </footer>
         )}
       </div>
     </div>,
     document.body
   );
+}
+
+/**
+ * Pre-fills a WhatsApp message with the current bag so an undecided shopper can
+ * hand the list to the seller instead of abandoning it silently.
+ */
+function buildBagEnquiryLink(
+  cart: ReturnType<typeof useStore>['cart'],
+  subtotal: number,
+  promoCodes: ReturnType<typeof useStore>['promoCodes']
+): string {
+  const lines = cart
+    .map(
+      (item, index) =>
+        `${index + 1}. ${item.product.title}\n   ${item.variantLabel} × ${item.quantity} — P${(
+          item.unitPriceBWP * item.quantity
+        ).toFixed(2)}`
+    )
+    .join('\n');
+
+  const bundle =
+    cart.filter((item) => item.product.category === 'perfumes').reduce((sum, item) => sum + item.quantity, 0) >= 2;
+
+  const message = [
+    `Dumelang ${SELLER_CONFIG.storeName}! I am interested in these pieces:`,
+    '',
+    lines,
+    '',
+    `Subtotal: P${subtotal.toFixed(2)}`,
+    bundle ? 'I understand the 2+ extrait bundle discount applies.' : '',
+    promoCodes.length > 0 ? `Active codes you shared: ${promoCodes.filter((p) => p.isActive).map((p) => p.code).join(', ')}` : '',
+    '',
+    'Please confirm availability and the total including delivery.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return `https://wa.me/${SELLER_CONFIG.sellerWhatsApp.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
 }

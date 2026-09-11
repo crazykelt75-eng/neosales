@@ -183,6 +183,9 @@ export function Footer() {
             >
               Delivery &amp; pickup
             </a>
+            <Link href="/track" className="block text-xs text-neutral-200 transition-colors hover:text-orangeMoney">
+              Track my order
+            </Link>
             <a
               href={buildSupportLink('I would like a fragrance recommendation.')}
               target="_blank"

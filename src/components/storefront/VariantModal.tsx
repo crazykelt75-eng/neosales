@@ -3,14 +3,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowUpRight,
   Check,
   Minus,
   MessageCircle,
   Plus,
+  Share2,
   ShieldCheck,
   ShoppingBag,
   Truck,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useStore } from '@/context/StoreContext';
 import { ProductVariant } from '@/types';
 import { Modal } from '@/components/ui/Modal';
@@ -22,6 +25,7 @@ import { formatBWP } from '@/lib/format';
 import { getGalleryImages } from '@/lib/imageUtils';
 import { getProductTeaser, getVariantLabel } from '@/lib/product';
 import { buildProductEnquiryLink } from '@/lib/whatsapp';
+import { SizeGuideModal } from '@/components/storefront/SavedItemsDrawer';
 
 const TITLE_ID = 'variant-modal-title';
 
@@ -46,6 +50,8 @@ export function VariantModal() {
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
   const [justAdded, setJustAdded] = useState(false);
+  const [shareNote, setShareNote] = useState('');
+  const [isSizeGuideOpen, setIsSizeGuideOpen] = useState(false);
 
   const gallery = useMemo(() => getGalleryImages(product?.imageUrls), [product]);
   const [activeImage, setActiveImage] = useState(0);
@@ -267,8 +273,15 @@ export function VariantModal() {
 
             {sizesInColor.length > 0 && (
               <fieldset>
-                <legend className="mb-2 text-2xs font-bold uppercase tracking-[0.14em] text-neutral-400">
-                  Size
+                <legend className="mb-2 flex w-full items-center justify-between gap-2 text-2xs font-bold uppercase tracking-[0.14em] text-neutral-400">
+                  <span>Size</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSizeGuideOpen(true)}
+                    className="rounded-lg border border-white/12 bg-white/[0.05] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-neutral-200 transition-colors hover:border-amber-500/50 hover:text-white"
+                  >
+                    Size guide
+                  </button>
                 </legend>
                 <div className="flex flex-wrap gap-2">
                   {sizesInColor.map((variant) => {
@@ -397,6 +410,49 @@ export function VariantModal() {
               <MessageCircle size={16} aria-hidden="true" />
               Ask about this piece on WhatsApp
             </a>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Link
+                href={`/p/${product.slug}`}
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.05] text-xs font-bold text-neutral-200 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+              >
+                <ArrowUpRight size={15} aria-hidden="true" />
+                Full page
+              </Link>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const url = `${window.location.origin}/p/${product.slug}`;
+                  try {
+                    if (navigator.share) {
+                      await navigator.share({
+                        title: product.title,
+                        text: `${product.title} — ${formatBWP(selectedVariant?.priceBWP ?? product.basePriceBWP)} at NeoSales`,
+                        url,
+                      });
+                      return;
+                    }
+                    await navigator.clipboard.writeText(url);
+                    setShareNote('Link copied — paste it into WhatsApp.');
+                    window.setTimeout(() => setShareNote(''), 2500);
+                  } catch {
+                    setShareNote('Copy the link from the address bar to share.');
+                    window.setTimeout(() => setShareNote(''), 2500);
+                  }
+                }}
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-white/12 bg-white/[0.05] text-xs font-bold text-neutral-200 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+              >
+                <Share2 size={15} aria-hidden="true" />
+                Share
+              </button>
+            </div>
+
+            {shareNote && (
+              <p role="status" className="text-center text-2xs font-semibold text-emerald-300">
+                {shareNote}
+              </p>
+            )}
           </div>
 
           <ul className="space-y-1.5 border-t border-white/10 pt-3 text-2xs text-neutral-300">
@@ -432,6 +488,8 @@ export function VariantModal() {
           )}
         </div>
       </div>
+
+      <SizeGuideModal isOpen={isSizeGuideOpen} onClose={() => setIsSizeGuideOpen(false)} />
     </Modal>
   );
 }

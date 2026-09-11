@@ -10,6 +10,8 @@ import { ProductCard } from '@/components/storefront/ProductCard';
 import { VariantModal } from '@/components/storefront/VariantModal';
 import { CartDrawer } from '@/components/storefront/CartDrawer';
 import { Footer } from '@/components/storefront/Footer';
+import { SavedItemsDrawer } from '@/components/storefront/SavedItemsDrawer';
+import { RecentlyViewed } from '@/components/storefront/RecentlyViewed';
 import { CheckoutModal } from '@/components/checkout/CheckoutModal';
 import { Button } from '@/components/ui/Button';
 import { CATEGORY_TABS } from '@/lib/constants';
@@ -33,7 +35,7 @@ const CATALOG_HEADINGS: Record<CategoryFilter, string> = {
 
 /** Client-side storefront: hero spotlight, filtered catalog, bag and checkout. */
 export function StorefrontHome() {
-  const { products, cartCount, cartSubtotal, openCart, hasHydrated } = useStore();
+  const { products, cartCount, cartSubtotal, openCart, hasHydrated, isSavedOpen, closeSaved } = useStore();
 
   const [category, setCategory] = useState<CategoryFilter>('all');
   const [query, setQuery] = useState('');
@@ -86,6 +88,8 @@ export function StorefrontHome() {
         </h1>
 
         <HeroSpotlight />
+
+        <RecentlyViewed />
 
         {/* Search + category filters */}
         <section aria-label="Catalog filters" className="space-y-3.5">
@@ -231,6 +235,7 @@ export function StorefrontHome() {
       <VariantModal />
       <CartDrawer />
       <CheckoutModal />
+      <SavedItemsDrawer isOpen={isSavedOpen} onClose={closeSaved} />
     </div>
   );
 }

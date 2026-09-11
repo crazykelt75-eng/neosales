@@ -8,9 +8,10 @@ import {
   CloudOff,
   DatabaseBackup,
   Lock,
+  Megaphone,
   PackagePlus,
-  RotateCcw,
   Store,
+  Wallet,
   Warehouse,
 } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
@@ -19,14 +20,19 @@ import { OrderKanban } from '@/components/admin/OrderKanban';
 import { InventoryManager } from '@/components/admin/InventoryManager';
 import { AddProductModal } from '@/components/admin/AddProductModal';
 import { DataBackupPanel } from '@/components/admin/DataBackupPanel';
+import { ReconciliationPanel } from '@/components/admin/ReconciliationPanel';
+import { OfflineSaleModal } from '@/components/admin/OfflineSaleModal';
+import { GrowthPanel } from '@/components/admin/GrowthPanel';
 import { Button } from '@/components/ui/Button';
 import { SELLER_CONFIG } from '@/lib/constants';
 
-type DashboardTab = 'orders' | 'inventory' | 'data';
+type DashboardTab = 'orders' | 'reconciliation' | 'inventory' | 'growth' | 'data';
 
 const TAB_LABELS: Record<DashboardTab, string> = {
   orders: 'Order pipeline',
+  reconciliation: 'Cash-up',
   inventory: 'Live inventory',
+  growth: 'Growth',
   data: 'Data & backup',
 };
 
@@ -36,6 +42,7 @@ export function AdminDashboard() {
 
   const [activeTab, setActiveTab] = useState<DashboardTab>('orders');
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [isOfflineSaleOpen, setIsOfflineSaleOpen] = useState(false);
 
   return (
     <div className="min-h-screen">
@@ -67,6 +74,15 @@ export function AdminDashboard() {
               {isCloudSync ? <Cloud size={13} aria-hidden="true" /> : <CloudOff size={13} aria-hidden="true" />}
               {isCloudSync ? 'Supabase live' : 'Local mode'}
             </span>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsOfflineSaleOpen(true)}
+              leftIcon={<Wallet size={15} />}
+            >
+              Record sale
+            </Button>
 
             <Button
               variant="secondary"
@@ -122,7 +138,9 @@ export function AdminDashboard() {
               }`}
             >
               {tab === 'orders' && <ClipboardList size={15} aria-hidden="true" />}
+              {tab === 'reconciliation' && <Wallet size={15} aria-hidden="true" />}
               {tab === 'inventory' && <Warehouse size={15} aria-hidden="true" />}
+              {tab === 'growth' && <Megaphone size={15} aria-hidden="true" />}
               {tab === 'data' && <DatabaseBackup size={15} aria-hidden="true" />}
               {TAB_LABELS[tab]}
               {tab === 'orders' && metrics.pendingVerificationCount > 0 && (
@@ -141,7 +159,9 @@ export function AdminDashboard() {
           tabIndex={0}
         >
           {activeTab === 'orders' && <OrderKanban />}
+          {activeTab === 'reconciliation' && <ReconciliationPanel />}
           {activeTab === 'inventory' && <InventoryManager />}
+          {activeTab === 'growth' && <GrowthPanel />}
           {activeTab === 'data' && <DataBackupPanel />}
         </div>
 
@@ -174,6 +194,7 @@ export function AdminDashboard() {
       </main>
 
       <AddProductModal isOpen={isAddProductOpen} onClose={() => setIsAddProductOpen(false)} />
+      <OfflineSaleModal isOpen={isOfflineSaleOpen} onClose={() => setIsOfflineSaleOpen(false)} />
     </div>
   );
 }

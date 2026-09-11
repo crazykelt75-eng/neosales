@@ -23,6 +23,7 @@ import { PaymentInstructions } from '@/components/checkout/PaymentInstructions';
 import { DELIVERY_OPTIONS, PAYMENT_OPTIONS, SELLER_CONFIG } from '@/lib/constants';
 import { formatBWP } from '@/lib/format';
 import { STORAGE_KEYS, readStorage, removeStorage, writeStorage } from '@/lib/storage';
+import { getAutomaticBundleDiscount } from '@/lib/promo';
 import { buildOrderReceipt, buildOrderWhatsAppLink, isValidBotswanaPhone } from '@/lib/whatsapp';
 
 const TITLE_ID = 'checkout-modal-title';
@@ -70,6 +71,8 @@ export function CheckoutModal() {
     selectedDelivery,
     setSelectedDelivery,
     setOrderPaymentReference,
+    checkPromoCode,
+    promoCodes,
   } = useStore();
 
   const [step, setStep] = useState<CheckoutStep>('details');
@@ -78,12 +81,34 @@ export function CheckoutModal() {
   const [order, setOrder] = useState<Order | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [referenceDraft, setReferenceDraft] = useState('');
+  const [promoInput, setPromoInput] = useState('');
+  const [promoMessage, setPromoMessage] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountBWP: number } | null>(null);
   const hasRestoredDraft = useRef(false);
 
   const deliveryOption =
     DELIVERY_OPTIONS.find((option) => option.id === form.deliveryPreference) ?? DELIVERY_OPTIONS[0];
   const deliveryFeeBWP = deliveryOption.feeBWP;
-  const totalBWP = cartSubtotal + deliveryFeeBWP;
+
+  // Automatic bundle discount plus whatever promo code the customer applied.
+  const bundleDiscount = useMemo(() => getAutomaticBundleDiscount(cart), [cart]);
+  const bundleDiscountBWP = bundleDiscount?.amountBWP ?? 0;
+  const promoDiscountBWP = appliedPromo?.discountBWP ?? 0;
+  const totalDiscountBWP = bundleDiscountBWP + promoDiscountBWP;
+  const totalBWP = Math.max(0, cartSubtotal - totalDiscountBWP + deliveryFeeBWP);
+
+  const handleApplyPromo = () => {
+    const result = checkPromoCode(promoInput);
+
+    if (!result.ok) {
+      setAppliedPromo(null);
+      setPromoMessage(result.message);
+      return;
+    }
+
+    setAppliedPromo({ code: promoInput.trim().toUpperCase(), discountBWP: result.discountBWP });
+    setPromoMessage(result.message);
+  };
 
   // Restore any half-finished checkout exactly once per open, seeding the delivery
   // rail the shopper last used.
@@ -103,6 +128,9 @@ export function CheckoutModal() {
       deliveryPreference: selectedDelivery,
     });
     setErrors({});
+    setPromoInput('');
+    setPromoMessage('');
+    setAppliedPromo(null);
   }, [isCheckoutOpen, selectedDelivery]);
 
   // Persist the draft so an accidental close never loses customer input.
@@ -195,7 +223,11 @@ export function CheckoutModal() {
       deliveryPreference: form.deliveryPreference,
     };
 
-    const createdOrder = createOrder({ customer, paymentMethod: form.paymentMethod });
+    const createdOrder = createOrder({
+      customer,
+      paymentMethod: form.paymentMethod,
+      promoCode: appliedPromo?.code,
+    });
     setOrder(createdOrder);
     setReferenceDraft('');
     setStep('success');
@@ -727,6 +759,25 @@ export function CheckoutModal() {
                           {formatBWP(cartSubtotal)}
                         </dd>
                       </div>
+
+                      {bundleDiscount && (
+                        <div className="flex items-center justify-between">
+                          <dt className="text-emerald-200">{bundleDiscount.label}</dt>
+                          <dd className="font-mono font-bold text-emerald-200" data-price>
+                            -{formatBWP(bundleDiscount.amountBWP)}
+                          </dd>
+                        </div>
+                      )}
+
+                      {appliedPromo && (
+                        <div className="flex items-center justify-between">
+                          <dt className="text-emerald-200">Code {appliedPromo.code}</dt>
+                          <dd className="font-mono font-bold text-emerald-200" data-price>
+                            -{formatBWP(appliedPromo.discountBWP)}
+                          </dd>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between">
                         <dt className="text-neutral-300">{deliveryOption.shortLabel}</dt>
                         <dd className="font-mono font-bold text-white" data-price>
@@ -742,6 +793,87 @@ export function CheckoutModal() {
                     </dl>
                   </>
                 )}
+
+                {/* Promo code */}
+                <div className="mt-4 border-t border-white/10 pt-3">
+                  <label htmlFor="promo-code" className="mb-1.5 block text-2xs font-bold uppercase tracking-[0.14em] text-neutral-400">
+                    Promo code
+                  </label>
+
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      id="promo-code"
+                      value={promoInput}
+                      onChange={(event) => {
+                        setPromoInput(event.target.value.toUpperCase());
+                        setPromoMessage('');
+                      }}
+                      placeholder="e.g. SUMMER10"
+                      autoComplete="off"
+                      className="min-w-0 flex-1 rounded-xl border border-white/12 bg-black/30 px-3 py-2.5 font-mono text-xs uppercase text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyPromo}
+                      disabled={!promoInput.trim()}
+                      className="flex-shrink-0 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-2xs font-bold uppercase tracking-wide text-neutral-100 transition-colors hover:bg-white/[0.14] disabled:opacity-40"
+                    >
+                      Apply
+                    </button>
+                  </div>
+
+                  {promoMessage && (
+                    <p
+                      role="status"
+                      className={`mt-2 text-2xs font-semibold leading-relaxed ${
+                        appliedPromo ? 'text-emerald-300' : 'text-amber-300'
+                      }`}
+                    >
+                      {promoMessage}
+                    </p>
+                  )}
+
+                  {appliedPromo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedPromo(null);
+                        setPromoInput('');
+                        setPromoMessage('');
+                      }}
+                      className="mt-1.5 text-2xs font-semibold text-neutral-400 underline-offset-2 hover:text-white hover:underline"
+                    >
+                      Remove code
+                    </button>
+                  )}
+
+                  {!appliedPromo && promoCodes.filter((promo) => promo.isActive).length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-2xs font-semibold text-neutral-400 hover:text-white">
+                        See current offers
+                      </summary>
+                      <ul className="mt-1.5 space-y-1">
+                        {promoCodes
+                          .filter((promo) => promo.isActive)
+                          .map((promo) => (
+                            <li key={promo.id} className="flex items-start justify-between gap-2 text-2xs">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPromoInput(promo.code);
+                                  setPromoMessage('');
+                                }}
+                                className="font-mono font-bold text-orangeMoney underline-offset-2 hover:underline"
+                              >
+                                {promo.code}
+                              </button>
+                              <span className="text-right text-neutral-400">{promo.description}</span>
+                            </li>
+                          ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
 
                 <p className="mt-3 flex items-center gap-1.5 text-2xs leading-relaxed text-neutral-400">
                   <MapPin size={12} className="text-orangeMoney" aria-hidden="true" />

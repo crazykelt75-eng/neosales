@@ -400,8 +400,19 @@ export const INITIAL_ORDERS: Order[] = [
     totalAmountBWP: 850,
     paymentMethod: 'orange_money',
     status: 'pending_verification',
+    paymentReference: 'OM-984102',
     createdAt: '2026-09-11T09:42:00.000Z',
-    verificationNotes: 'Customer says transfer reference OM-984102 was sent at 09:40.',
+    timeline: [
+      { id: 'evt-demo-1', at: '2026-09-11T09:42:00.000Z', label: 'Order placed on the website', actor: 'customer' },
+      {
+        id: 'evt-demo-2',
+        at: '2026-09-11T09:45:00.000Z',
+        label: 'Payment reference captured',
+        actor: 'customer',
+        detail: 'OM-984102',
+      },
+    ],
+    verificationNotes: 'Customer says the transfer was sent at 09:40 — verify against the wallet statement.',
   },
   {
     id: 'ord-demo-2',
@@ -430,8 +441,20 @@ export const INITIAL_ORDERS: Order[] = [
     totalAmountBWP: 505,
     paymentMethod: 'fnb_pay2cell',
     status: 'payment_confirmed',
+    paymentReference: 'PP260911.0714.C72819',
     createdAt: '2026-09-11T07:15:00.000Z',
     verifiedAt: '2026-09-11T07:22:00.000Z',
+    timeline: [
+      { id: 'evt-demo-3', at: '2026-09-11T07:15:00.000Z', label: 'Order placed on the website', actor: 'customer' },
+      {
+        id: 'evt-demo-4',
+        at: '2026-09-11T07:18:00.000Z',
+        label: 'Payment reference captured',
+        actor: 'seller',
+        detail: 'PP260911.0714.C72819',
+      },
+      { id: 'evt-demo-5', at: '2026-09-11T07:22:00.000Z', label: 'Status set to Payment Confirmed', actor: 'seller' },
+    ],
   },
   {
     id: 'ord-demo-3',
@@ -460,8 +483,26 @@ export const INITIAL_ORDERS: Order[] = [
     totalAmountBWP: 380,
     paymentMethod: 'cash_on_pickup',
     status: 'dispatched',
+    channel: 'whatsapp',
+    pickupSlot: { date: '2026-09-12', window: '14:00 – 15:00', point: 'Nswazwi Mall' },
     createdAt: '2026-09-10T14:00:00.000Z',
     verifiedAt: '2026-09-10T14:10:00.000Z',
+    timeline: [
+      {
+        id: 'evt-demo-6',
+        at: '2026-09-10T14:00:00.000Z',
+        label: 'Sale recorded manually (WhatsApp / DM)',
+        actor: 'seller',
+        detail: 'Ordered from a Status post',
+      },
+      {
+        id: 'evt-demo-7',
+        at: '2026-09-10T14:10:00.000Z',
+        label: 'Pickup slot agreed',
+        actor: 'seller',
+        detail: '2026-09-12 · 14:00 – 15:00 · Nswazwi Mall',
+      },
+    ],
   },
   {
     id: 'ord-demo-4',
@@ -490,8 +531,25 @@ export const INITIAL_ORDERS: Order[] = [
     totalAmountBWP: 860,
     paymentMethod: 'orange_money',
     status: 'completed',
+    paymentReference: 'OM-977410',
     createdAt: '2026-09-09T10:00:00.000Z',
     verifiedAt: '2026-09-09T10:15:00.000Z',
+    timeline: [
+      { id: 'evt-demo-8', at: '2026-09-09T10:00:00.000Z', label: 'Order placed on the website', actor: 'customer' },
+      {
+        id: 'evt-demo-9',
+        at: '2026-09-09T10:15:00.000Z',
+        label: 'Status set to Payment Confirmed',
+        actor: 'seller',
+      },
+      {
+        id: 'evt-demo-10',
+        at: '2026-09-11T09:00:00.000Z',
+        label: 'Status set to Completed',
+        actor: 'seller',
+        detail: 'Courier delivered to Maun',
+      },
+    ],
   },
 ];
 

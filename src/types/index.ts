@@ -91,6 +91,31 @@ export interface OrderCustomer {
   deliveryPreference: DeliveryPreference;
 }
 
+/** Where the sale came from, so WhatsApp/DM sales reconcile against the website. */
+export type SalesChannel = 'website' | 'whatsapp' | 'walk_in';
+
+/** One entry in an order's activity log (who did what, and when). */
+export interface OrderEvent {
+  id: string;
+  at: string;
+  /** Short label, e.g. `Payment confirmed`. */
+  label: string;
+  /** Optional supporting detail, e.g. the transaction reference. */
+  detail?: string;
+  /** Who recorded the event. */
+  actor: 'customer' | 'seller' | 'system';
+}
+
+/** Agreed collection window for Francistown pickups. */
+export interface PickupSlot {
+  /** ISO date (yyyy-mm-dd). */
+  date: string;
+  /** One-hour window, e.g. `14:00 – 15:00`. */
+  window: string;
+  /** One of the seller's pickup points, e.g. `Galo Mall`. */
+  point: string;
+}
+
 /** Immutable snapshot of a bag line at the moment the order was created. */
 export interface OrderItem {
   id: string;
@@ -112,9 +137,23 @@ export interface Order {
   items: OrderItem[];
   subtotalBWP: number;
   deliveryFeeBWP: number;
+  /** Total discount applied at checkout (bundle + promo), in Pula. */
+  discountBWP?: number;
+  /** Portion of `discountBWP` earned automatically by the extrait bundle rule. */
+  bundleDiscountBWP?: number;
+  /** Portion of `discountBWP` produced by a promo code. */
+  promoDiscountBWP?: number;
+  /** Promo code that produced `promoDiscountBWP`. */
+  promoCode?: string;
   totalAmountBWP: number;
   paymentMethod: PaymentMethod;
   status: OrderStatus;
+  /** Sales channel; defaults to `website` for storefront orders. */
+  channel?: SalesChannel;
+  /** Agreed pickup window, for Francistown collections. */
+  pickupSlot?: PickupSlot;
+  /** Append-only activity log rendered on the order card. */
+  timeline?: OrderEvent[];
   createdAt: string;
   /** ISO timestamp of seller payment verification, when available. */
   verifiedAt?: string;
@@ -128,6 +167,37 @@ export interface Order {
   cancelReason?: string;
 }
 
+/** A promo code that may be applied at checkout. */
+export interface PromoCode {
+  id: string;
+  /** Uppercase code the customer types, e.g. `SUMMER10`. */
+  code: string;
+  /** Percentage off the subtotal (1-100). */
+  percentOff: number;
+  /** Minimum subtotal required, in Pula. */
+  minSubtotalBWP: number;
+  /** Optional cap on the discount, in Pula. */
+  maxDiscountBWP?: number;
+  isActive: boolean;
+  /** ISO date the code stops working. */
+  expiresAt?: string;
+  /** Free-text note shown to the customer, e.g. bundle description. */
+  description: string;
+}
+
+/** Buyer waiting for a sold-out variant to come back in stock. */
+export interface StockAlert {
+  id: string;
+  productId: string;
+  productTitle: string;
+  variantId: string;
+  variantLabel: string;
+  /** WhatsApp number to notify. */
+  phone: string;
+  createdAt: string;
+  notifiedAt?: string;
+}
+
 /** Verified buyer feedback surfaced in the hero spotlight and product cards. */
 export interface CustomerReview {
   id: string;
@@ -139,6 +209,8 @@ export interface CustomerReview {
   /** ISO date (yyyy-mm-dd) of the review. */
   date: string;
   verified?: boolean;
+  /** Order number that unlocked the review, for verified-buyer submissions. */
+  orderNumber?: string;
 }
 
 /** Static definition of a delivery rail (fee + coverage) used by checkout and SEO. */
@@ -194,6 +266,10 @@ export interface StoreMetrics {
   cancelledCount: number;
   totalStockUnits: number;
   lowStockVariantCount: number;
+  /** Units sold through WhatsApp/DMs rather than the website. */
+  offlineOrderCount: number;
+  /** Value of cancelled orders, so it can be excluded from takings honestly. */
+  cancelledValueBWP: number;
   lowStockVariants: {
     productId: string;
     productTitle: string;
@@ -214,6 +290,9 @@ export interface StoreBackup {
   exportedAt: string;
   products: Product[];
   orders: Order[];
+  reviews?: CustomerReview[];
+  promoCodes?: PromoCode[];
+  stockAlerts?: StockAlert[];
 }
 
 /** Workflow statuses that appear as kanban columns (cancellations sit outside the board). */

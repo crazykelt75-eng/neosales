@@ -24,6 +24,7 @@ Everything is priced in **Botswana Pula (BWP)** and rendered as `P280`, `P460`, 
 | 1-tap WhatsApp dispatch | Generates an `ORD-8421` reference, records the order, formats a full human-readable receipt and opens `wa.me/267…` with the receipt pre-filled so the customer only has to send it. |
 | Order tracking | `/track` looks an order up with its `ORD-…` reference **and** the last 4 digits of the phone number, then shows a 5-step progress rail with a live "Current" marker, itemised totals, your saved transaction reference, pickup points and a one-tap "ask a question on WhatsApp" link. |
 | Product pages & sharing | Every active product has a static, shareable page at `/p/<slug>` with its own OG/Twitter preview, `Product` JSON-LD (BWP pricing + rating) and the full variant picker — ideal for WhatsApp Status drops. |
+| Verified reviews | Buyers review any product without an account; adding the `ORD-…` reference from their receipt has it checked against the order book and badged **Verified purchase** (only when the order exists and contains that product). |
 | Saved items | A bookmark on every card and product page, a counter in the header and a slide-over drawer with "add all to bag" and per-item WhatsApp enquiry. Saved products are remembered on the device. |
 | Recently viewed | A horizontal strip under the catalog that resurfaces the last products you opened. |
 | Bag to WhatsApp | Besides checkout, the bag can be sent straight to the seller as a pre-written WhatsApp message when the customer would rather chat first. |
@@ -65,7 +66,7 @@ Everything is priced in **Botswana Pula (BWP)** and rendered as `P280`, `P460`, 
 | --- | --- |
 | Promo codes | Create percentage codes with a minimum spend, a Pula cap, an optional expiry date and a note (`SUMMER10`, `FIRSTORDER`, `FRANCISTOWN` are seeded). Pause or reactivate a campaign without deleting it, and see usage counts at a glance. |
 | Stock alerts | Every back-in-stock request with the customer's number, the variant they want and age; a "Ready to notify" count and one-tap WhatsApp messages (including a follow-up nudge if the item is still out). |
-| Reviews | Live rating average, reviews collected and customers served, plus the incoming buyer feedback feed. |
+| Reviews | Live rating average, reviews collected and customers served, plus the incoming buyer feedback feed — each review showing the product, the buyer and the order reference behind any verified badge. |
 
 Discounts are computed in one place (`src/lib/promo.ts`), stored on the order (`discountBWP`, `bundleDiscountBWP`, `promoDiscountBWP`, `promoCode`), shown on the receipt, exported in the ledger CSV and mirrored to Supabase — so the cash-up tally always matches what the customer paid.
 
@@ -200,8 +201,10 @@ src/
 │                             # promo, export, imageUtils, supabaseClient, mockData
 └── types/index.ts            # Domain model (Product, ProductVariant, CartItem, Order, …)
 public/
+├── icons/                    # 192px + 512px app icons and a maskable variant
 ├── manifest.webmanifest      # Installable PWA (standalone, midnight theme, Track shortcut)
 └── sw.js                     # Offline shell: network-first pages, cache-first assets
+src/app/favicon.ico, apple-icon.png   # Browser tab + iOS home-screen icon
 ```
 
 ---
@@ -223,8 +226,8 @@ public/
 - Botswana-targeted metadata, Open Graph and Twitter cards (`Botswana perfumes`, `Francistown fashion`, `Orange Money online shopping`).
 - **Schema.org `OnlineStore`** JSON-LD with an `OfferCatalog`: every product carries `priceCurrency: "BWP"`, availability, aggregate rating and shipping rates for pickup (P0), local courier (P45) and nationwide (P80), with `areaServed` covering Francistown, Gaborone, Maun, Kasane, Palapye and Mahalapye.
 - Every product also emits its own `Product` JSON-LD (BWP price range, availability, rating) on its `/p/<slug>` page, with canonical URLs and `en_BW` Open Graph previews sized for WhatsApp.
-- `public/robots.txt` disallows `/admin` and `/track`; `public/sitemap.xml` lists the storefront, catalog, delivery anchors, the tracking page and all six product pages.
-- **Installable PWA** — `manifest.webmanifest` plus a service worker give the storefront an app icon and an offline shell, so the catalog still opens on patchy mobile data.
+- `public/robots.txt` disallows `/admin`; `public/sitemap.xml` lists the storefront, catalog, delivery anchors, the tracking page and all six product pages.
+- **Installable PWA** — `manifest.webmanifest` plus a service worker give the storefront an app icon (192px, 512px and a maskable variant, all rendered from the brand mark) and an offline shell, so the catalog still opens on patchy mobile data.
 - Catalog cards are server-rendered, so product names and Pula prices appear in the initial HTML.
 
 ---

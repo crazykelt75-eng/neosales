@@ -102,7 +102,7 @@ export function GrowthPanel() {
         )}
 
         {activeTab === 'reviews' && (
-          <ReviewManager reviews={submittedReviews} metrics={metrics} />
+          <ReviewManager reviews={submittedReviews} metrics={metrics} products={products} />
         )}
       </div>
     </section>
@@ -482,9 +482,11 @@ function StockAlertManager({
 function ReviewManager({
   reviews,
   metrics,
+  products,
 }: {
   reviews: ReturnType<typeof useStore>['reviews'];
   metrics: ReturnType<typeof useStore>['metrics'];
+  products: ReturnType<typeof useStore>['products'];
 }) {
   const averageRating =
     reviews.length > 0 ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
@@ -514,7 +516,7 @@ function ReviewManager({
 
         <ul className="mt-4 space-y-2">
           {reviews.slice(0, 12).map((review) => {
-            const product = review.productId;
+            const productTitle = products.find((item) => item.id === review.productId)?.title ?? review.productId;
 
             return (
               <li key={review.id} className="rounded-xl border border-white/10 bg-black/25 px-3.5 py-3">
@@ -526,12 +528,15 @@ function ReviewManager({
                   </p>
                   {review.verified && (
                     <Badge variant="success" icon={null} className="text-[10px]">
-                      Verified purchase
+                      {review.orderNumber ? `Verified · ${review.orderNumber}` : 'Verified purchase'}
                     </Badge>
                   )}
                 </div>
                 <p className="mt-1.5 text-xs leading-relaxed text-neutral-300">{review.comment}</p>
-                <p className="mt-1 text-2xs text-neutral-400">Product ID {product}</p>
+                <p className="mt-1 text-2xs text-neutral-400">
+                  {productTitle}
+                  {review.orderNumber ? ` · ${review.orderNumber}` : ''}
+                </p>
               </li>
             );
           })}
@@ -539,8 +544,9 @@ function ReviewManager({
 
         <p className="mt-3 flex items-center gap-2 text-2xs leading-relaxed text-neutral-400">
           <Users size={12} aria-hidden="true" />
-          Buyers can leave a review from any shareable product page. Ask for the order number on WhatsApp to upgrade a
-          review to verified.
+          Buyers leave reviews from any shareable product page. Adding their <span className="font-mono">ORD-…</span>{' '}
+          reference earns the verified badge automatically — it is only granted when the order exists and contains that
+          product.
         </p>
       </div>
     </div>

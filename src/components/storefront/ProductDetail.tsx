@@ -24,6 +24,7 @@ import { StarRating } from '@/components/ui/StarRating';
 import { CATEGORY_LABELS, LOW_STOCK_WARNING_CEILING, SELLER_CONFIG } from '@/lib/constants';
 import { formatBWP } from '@/lib/format';
 import { getGalleryImages } from '@/lib/imageUtils';
+import { matchVerifiedOrder } from '@/lib/reviews';
 import { getProductStatusSummary, getProductTeaser, getVariantLabel } from '@/lib/product';
 import { buildProductEnquiryLink } from '@/lib/whatsapp';
 
@@ -37,7 +38,8 @@ interface ProductDetailProps {
  * proper image preview.
  */
 export function ProductDetail({ product }: ProductDetailProps) {
-  const { addToCart, getProductReviews, getProductRating, markViewed, toggleSaved, isSaved, addReview } = useStore();
+  const { addToCart, getProductReviews, getProductRating, markViewed, toggleSaved, isSaved, addReview, orders } =
+    useStore();
 
   const [selectedVariantId, setSelectedVariantId] = useState(product.variants[0]?.id ?? '');
   const [quantity, setQuantity] = useState(1);
@@ -47,6 +49,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const [reviewTown, setReviewTown] = useState('');
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+  const [reviewOrderNumber, setReviewOrderNumber] = useState('');
   const [reviewError, setReviewError] = useState('');
 
   const gallery = useMemo(() => getGalleryImages(product.imageUrls, 1200), [product.imageUrls]);
@@ -109,22 +112,40 @@ export function ProductDetail({ product }: ProductDetailProps) {
       return;
     }
 
+    // An order number turns the review into a verified purchase — but only when
+    // it really is one of our orders and it actually contains this product.
+    const claimed = reviewOrderNumber.trim();
+    const matchedOrder = matchVerifiedOrder(orders, product.id, claimed);
+
+    if (claimed && !matchedOrder) {
+      setReviewError(
+        'We could not match that order number to this product. Check the ORD- number on your receipt, or leave the field blank to post an unverified review.'
+      );
+      return;
+    }
+
     addReview({
       productId: product.id,
       customerName: reviewName.trim(),
-      town: reviewTown.trim() || 'Botswana',
+      town: reviewTown.trim() || matchedOrder?.customer.town || 'Botswana',
       rating: reviewRating as 1 | 2 | 3 | 4 | 5,
       comment: reviewComment.trim(),
-      verified: false,
+      verified: Boolean(matchedOrder),
+      orderNumber: matchedOrder?.orderNumber,
     });
 
     setReviewName('');
     setReviewTown('');
     setReviewRating(5);
     setReviewComment('');
+    setReviewOrderNumber('');
     setReviewError('');
-    setStatusMessage('Thank you — your review is published.');
-    window.setTimeout(() => setStatusMessage(''), 2500);
+    setStatusMessage(
+      matchedOrder
+        ? `Thank you — published with a verified purchase badge (${matchedOrder.orderNumber}).`
+        : 'Thank you — your review is published.'
+    );
+    window.setTimeout(() => setStatusMessage(''), 3000);
   };
 
   return (
@@ -475,7 +496,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   {review.verified && (
                     <p className="mt-1.5 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-emerald-300">
                       <CheckCircle2 size={12} aria-hidden="true" />
-                      Verified purchase
+                      Verified purchase{review.orderNumber ? ` · ${review.orderNumber}` : ''}
                     </p>
                   )}
                 </li>
@@ -543,6 +564,26 @@ export function ProductDetail({ product }: ProductDetailProps) {
             </fieldset>
 
             <div>
+              <label htmlFor="review-order" className="mb-1.5 block text-xs font-semibold text-neutral-200">
+                Order number <span className="font-normal text-neutral-400">(optional — earns the verified badge)</span>
+              </label>
+              <input
+                id="review-order"
+                value={reviewOrderNumber}
+                onChange={(event) => setReviewOrderNumber(event.target.value)}
+                placeholder="ORD-8421"
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby="review-order-hint"
+                className="w-full rounded-xl border border-white/12 bg-black/30 px-3.5 py-2.5 font-mono text-sm uppercase tracking-wide text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+              />
+              <p id="review-order-hint" className="mt-1.5 text-2xs leading-relaxed text-neutral-400">
+                Paste the <span className="font-mono">ORD-…</span> reference from the receipt we sent you — we check it
+                against our records before adding the badge.
+              </p>
+            </div>
+
+            <div>
               <label htmlFor="review-comment" className="mb-1.5 block text-xs font-semibold text-neutral-200">
                 Your review
               </label>
@@ -568,8 +609,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
             </Button>
 
             <p className="text-2xs leading-relaxed text-neutral-400">
-              Reviews published from this page are marked as unverified. Bought from us? Send your order number on
-              WhatsApp and we will add the verified badge.
+              Reviews are published instantly. Add your order number to have it checked against our order book and
+              badged as a verified purchase.
             </p>
           </div>
         </form>

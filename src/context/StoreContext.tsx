@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Product, ProductVariant, CartItem, Order, OrderStatus, StoreMetrics, CustomerInput, PaymentMethod } from '@/types';
 import { INITIAL_PRODUCTS, INITIAL_ORDERS } from '@/lib/mockData';
 import { DELIVERY_OPTIONS_LABELS } from '@/lib/whatsapp';
+import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 
 interface StoreContextType {
   // Products
@@ -72,7 +73,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     fnbAccountName: process.env.NEXT_PUBLIC_FNB_ACCOUNT_NAME || 'NeoSales Retail',
   };
 
-  // Load from localStorage on client mount
+  // Load from localStorage & Supabase on client mount
   useEffect(() => {
     try {
       const savedProducts = localStorage.getItem(STORAGE_PRODUCTS_KEY);
@@ -85,6 +86,136 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (savedCart) setCart(JSON.parse(savedCart));
     } catch {
       // Graceful fallback to initial mock data
+    }
+
+    // Live Supabase integration
+    if (isSupabaseConfigured() && supabase) {
+      const client = supabase;
+      client
+        .from('products')
+        .select(`
+          id,
+          title,
+          slug,
+          category,
+          description,
+          base_price_bwp,
+          is_active,
+          is_new_arrival,
+          image_urls,
+          featured_tag,
+          product_variants (
+            id,
+            product_id,
+            sku,
+            size,
+            color,
+            volume_ml,
+            scent_profile,
+            price_bwp,
+            stock_quantity,
+            low_stock_threshold
+          )
+        `)
+        .eq('is_active', true)
+        .then(({ data, error }) => {
+          if (!error && data && data.length > 0) {
+            const mapped: Product[] = (data as any[]).map((p) => ({
+              id: p.id,
+              title: p.title,
+              slug: p.slug,
+              category: p.category,
+              description: p.description,
+              basePriceBWP: Number(p.base_price_bwp),
+              isActive: p.is_active,
+              isNewArrival: p.is_new_arrival,
+              imageUrls: p.image_urls || [],
+              featuredTag: p.featured_tag,
+              variants: (p.product_variants || []).map((v: any) => ({
+                id: v.id,
+                productId: v.product_id,
+                sku: v.sku,
+                size: v.size,
+                color: v.color,
+                volumeMl: v.volume_ml,
+                scentProfile: v.scent_profile,
+                priceBWP: Number(v.price_bwp),
+                stockQuantity: v.stock_quantity,
+                lowStockThreshold: v.low_stock_threshold,
+              })),
+            }));
+            setProducts(mapped);
+            persistProducts(mapped);
+          }
+        });
+
+      // Fetch live orders
+      client
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          customer_name,
+          customer_phone,
+          delivery_preference,
+          delivery_location,
+          payment_method,
+          subtotal_bwp,
+          delivery_fee_bwp,
+          total_amount_bwp,
+          status,
+          payment_proof_url,
+          verification_notes,
+          verified_at,
+          created_at,
+          order_items (
+            id,
+            variant_id,
+            product_title_snapshot,
+            variant_label_snapshot,
+            unit_price_bwp,
+            quantity,
+            line_total_bwp
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .then(({ data, error }) => {
+          if (!error && data && data.length > 0) {
+            const mappedOrders: Order[] = (data as any[]).map((o) => {
+              const locationParts = (o.delivery_location || '').split(' - ');
+              return {
+                id: o.id,
+                orderNumber: o.order_number,
+                customer: {
+                  fullName: o.customer_name,
+                  phone: o.customer_phone,
+                  deliveryTown: locationParts[0] || 'Francistown',
+                  deliveryAddress: locationParts.slice(1).join(' - ') || o.delivery_location || '',
+                  deliveryPreference: o.delivery_preference,
+                },
+                items: (o.order_items || []).map((it: any) => ({
+                  variantId: it.variant_id || 'var-1',
+                  productTitle: it.product_title_snapshot,
+                  variantLabel: it.variant_label_snapshot,
+                  unitPriceBWP: Number(it.unit_price_bwp),
+                  quantity: it.quantity,
+                  lineTotalBWP: Number(it.line_total_bwp),
+                })),
+                subtotalBWP: Number(o.subtotal_bwp),
+                deliveryFeeBWP: Number(o.delivery_fee_bwp),
+                totalAmountBWP: Number(o.total_amount_bwp),
+                paymentMethod: o.payment_method,
+                status: o.status,
+                paymentProofUrl: o.payment_proof_url,
+                verificationNotes: o.verification_notes,
+                verifiedAt: o.verified_at,
+                createdAt: o.created_at,
+              };
+            });
+            setOrders(mappedOrders);
+            persistOrders(mappedOrders);
+          }
+        });
     }
   }, []);
 
@@ -216,6 +347,43 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const updatedOrders = [newOrder, ...orders];
     persistOrders(updatedOrders);
     clearCart();
+
+    // Async write to Supabase orders & order_items
+    if (isSupabaseConfigured() && supabase) {
+      const client = supabase;
+      client
+        .from('orders')
+        .insert({
+          order_number: newOrder.orderNumber,
+          customer_name: newOrder.customer.fullName,
+          customer_phone: newOrder.customer.phone,
+          delivery_preference: newOrder.customer.deliveryPreference,
+          delivery_location: `${newOrder.customer.deliveryTown} - ${newOrder.customer.deliveryAddress}`,
+          payment_method: newOrder.paymentMethod,
+          subtotal_bwp: newOrder.subtotalBWP,
+          delivery_fee_bwp: newOrder.deliveryFeeBWP,
+          total_amount_bwp: newOrder.totalAmountBWP,
+          status: newOrder.status,
+        })
+        .select('id')
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const itemsToInsert = newOrder.items.map((it) => ({
+              order_id: data.id,
+              variant_id: uuidRegex.test(it.variantId) ? it.variantId : null,
+              product_title_snapshot: it.productTitle,
+              variant_label_snapshot: it.variantLabel,
+              unit_price_bwp: it.unitPriceBWP,
+              quantity: it.quantity,
+              line_total_bwp: it.lineTotalBWP,
+            }));
+            client.from('order_items').insert(itemsToInsert).then(() => {});
+          }
+        });
+    }
+
     return newOrder;
   };
 
@@ -245,6 +413,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
 
     persistOrders(updatedOrders);
+
+    // Sync status change to Supabase
+    if (isSupabaseConfigured() && supabase) {
+      const client = supabase;
+      const verifiedAtTimestamp =
+        newStatus === 'payment_confirmed' && !orderToUpdate.verifiedAt
+          ? new Date().toISOString()
+          : orderToUpdate.verifiedAt;
+
+      client
+        .from('orders')
+        .update({
+          status: newStatus,
+          verification_notes: notes || orderToUpdate.verificationNotes,
+          verified_at: verifiedAtTimestamp,
+        })
+        .eq('order_number', orderToUpdate.orderNumber)
+        .then(() => {});
+    }
   };
 
   // Decrement variant stock

@@ -1,5 +1,9 @@
+# NeoSales Botswana — https://neosales.crazykelt75.workers.dev
 User-agent: *
 Allow: /
+# The seller workspace is PIN-gated; it must never be crawled.
 Disallow: /admin
+Disallow: /admin/
 
+# Order confirmations, bag state and saved items are client-side only; nothing to index there.
 Sitemap: https://neosales.crazykelt75.workers.dev/sitemap.xml

@@ -1,120 +1,119 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Sparkles, AlertTriangle, Plus, Eye } from 'lucide-react';
+import { Plus, Star } from 'lucide-react';
 import { Product } from '@/types';
 import { useStore } from '@/context/StoreContext';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { getOptimizedImageUrl } from '@/lib/imageUtils';
+import { CATALOG_IMAGE_HEIGHT, CATALOG_IMAGE_WIDTH, getOptimizedImageUrl } from '@/lib/imageUtils';
+import { formatBWP } from '@/lib/format';
+import { getProductStatusSummary, getProductTeaser } from '@/lib/product';
 
-interface Props {
+interface ProductCardProps {
   product: Product;
+  /** Above-the-fold cards load eagerly to protect Largest Contentful Paint. */
   priority?: boolean;
 }
 
-export function ProductCard({ product, priority = false }: Props) {
-  const { setSelectedProductForModal } = useStore();
-  const [imageLoaded, setImageLoaded] = useState(false);
+/**
+ * High-signal catalog card: one clean status badge, one-line fragrance or
+ * material teaser, bold Pula price and a single stretched action that opens the
+ * variant modal. The whole card is one native button — no nested controls.
+ */
+export function ProductCard({ product, priority = false }: ProductCardProps) {
+  const { openProduct, getProductRating } = useStore();
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
 
-  // Total stock across all options
-  const totalStock = product.variants.reduce((acc, v) => acc + v.stockQuantity, 0);
-  const isSoldOut = totalStock === 0;
-  const isLowStock = !isSoldOut && totalStock <= 3;
+  const { totalStock, isSoldOut, isLowStock, minPriceBWP, maxPriceBWP, hasPriceRange } =
+    getProductStatusSummary(product);
+  const { average, count } = getProductRating(product.id);
 
-  // Price calculations
-  const prices = product.variants.map((v) => v.priceBWP);
-  const minPrice = Math.min(...prices, product.basePriceBWP);
-  const maxPrice = Math.max(...prices, product.basePriceBWP);
-
-  const handleOpen = () => {
-    setSelectedProductForModal(product);
-  };
-
-  const optimizedSrc = getOptimizedImageUrl(product.imageUrls[0], 500);
+  const statusBadge = isSoldOut ? (
+    <Badge variant="soldOut" icon={null}>
+      Sold out
+    </Badge>
+  ) : isLowStock ? (
+    <Badge variant="lowStock">Only {totalStock} left</Badge>
+  ) : product.isNewArrival ? (
+    <Badge variant="new" icon={null}>
+      New
+    </Badge>
+  ) : null;
 
   return (
-    <article className="group relative flex flex-col bg-[#0e1118] rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 hover:border-orangeMoney/40 shadow-soft hover:shadow-[0_12px_35px_-8px_rgba(255,102,0,0.18)] hover:-translate-y-1 transition-all duration-300 active:scale-[0.985]">
-      {/* Native Accessible Action Button (stretched full card overlay) */}
+    <article className="group relative flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-surface shadow-card transition-all duration-300 ease-luxe focus-within:border-orangeMoney/50 hover:-translate-y-1 hover:border-orangeMoney/40 hover:shadow-[0_24px_50px_-24px_rgba(255,102,0,0.55)]">
+      {/* Whole-card action */}
       <button
         type="button"
-        onClick={handleOpen}
-        aria-label={`View ${product.title}, priced from P${minPrice}. ${
-          isSoldOut ? 'Sold out' : isLowStock ? `Only ${totalStock} left` : 'In stock'
-        }`}
-        className="absolute inset-0 z-10 w-full h-full cursor-pointer rounded-2xl sm:rounded-3xl focus-visible:outline-2 focus-visible:outline-orangeMoney focus-visible:outline-offset-2"
-      />
+        onClick={() => openProduct(product)}
+        className="absolute inset-0 z-20 rounded-3xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orangeMoney"
+        aria-label={`${product.title}. ${getProductTeaser(product)}. From ${formatBWP(
+          minPriceBWP
+        )}. ${isSoldOut ? 'Sold out.' : isLowStock ? `Only ${totalStock} left.` : 'In stock.'} Choose options`}
+      >
+        <span className="sr-only">Choose options</span>
+      </button>
 
-      {/* Product Image Stage */}
-      <div className="relative w-full aspect-[4/5] bg-[#08090f] overflow-hidden">
-        {!imageLoaded && <Skeleton className="absolute inset-0 z-0 pointer-events-none" />}
+      {/* Image stage — catalog standard 4:5 (400 × 500) */}
+      <div
+        className="relative w-full overflow-hidden bg-[#080a10]"
+        style={{ aspectRatio: `${CATALOG_IMAGE_WIDTH} / ${CATALOG_IMAGE_HEIGHT}` }}
+      >
+        {!isImageLoaded && <Skeleton className="absolute inset-0 z-0 rounded-none" />}
 
-        {optimizedSrc ? (
-          <img
-            src={optimizedSrc}
-            alt={product.title}
-            width="400"
-            height="500"
-            decoding="async"
-            loading={priority ? 'eager' : 'lazy'}
-            fetchPriority={priority ? 'high' : 'auto'}
-            onLoad={() => setImageLoaded(true)}
-            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out relative z-[1]"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-neutral-400 text-xs">
-            No image available
+        <img
+          src={getOptimizedImageUrl(product.imageUrls[0], CATALOG_IMAGE_WIDTH)}
+          alt={`${product.title} — ${getProductTeaser(product)}`}
+          width={CATALOG_IMAGE_WIDTH}
+          height={CATALOG_IMAGE_HEIGHT}
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={priority ? 'high' : 'auto'}
+          onLoad={() => setIsImageLoaded(true)}
+          onError={() => setIsImageLoaded(true)}
+          className={`relative z-10 h-full w-full object-cover object-center transition-transform duration-700 ease-luxe group-hover:scale-[1.06] group-focus-within:scale-[1.06] ${
+            isImageLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+
+        {statusBadge && <div className="absolute left-3 top-3 z-20 pointer-events-none">{statusBadge}</div>}
+
+        {count > 0 && (
+          <div className="pointer-events-none absolute right-3 top-3 z-20 inline-flex items-center gap-1 rounded-full border border-white/12 bg-black/60 px-2 py-1 text-2xs font-bold text-amber-200 backdrop-blur">
+            <Star size={11} className="text-amber-400" fill="currentColor" aria-hidden="true" />
+            {average.toFixed(1)}
           </div>
         )}
-
-        {/* Priority Badge (single clean badge) */}
-        <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
-          {isSoldOut ? (
-            <Badge variant="soldOut">Sold Out</Badge>
-          ) : isLowStock ? (
-            <Badge variant="lowStock" pulse>
-              Only {totalStock} Left
-            </Badge>
-          ) : product.isNewArrival ? (
-            <Badge variant="new">NEW</Badge>
-          ) : product.featuredTag ? (
-            <span className="bg-amber-500/20 backdrop-blur-md text-amber-200 border border-amber-500/40 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
-              {product.featuredTag}
-            </span>
-          ) : null}
-        </div>
       </div>
 
-      {/* Product Information */}
-      <div className="p-3.5 sm:p-4 flex flex-col flex-1 justify-between gap-2.5">
-        <div>
-          <h3 className="font-bold text-white text-sm sm:text-base leading-snug line-clamp-2 group-hover:text-amber-400 transition-colors">
+      {/* Details */}
+      <div className="flex flex-1 flex-col justify-between gap-3 p-3.5 sm:p-4">
+        <div className="space-y-1.5">
+          <h3 className="line-clamp-2 text-sm font-bold leading-snug text-white transition-colors group-hover:text-amber-200 sm:text-base">
             {product.title}
           </h3>
-          <p className="text-xs text-neutral-400 line-clamp-1 mt-1 font-normal leading-relaxed">
-            {product.description}
-          </p>
+          <p className="line-clamp-1 text-xs text-neutral-400">{getProductTeaser(product)}</p>
         </div>
 
-        {/* Price & Action Row */}
-        <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
-          <div className="text-base sm:text-lg font-black text-white tracking-tight font-mono">
-            P{minPrice}
-            {maxPrice > minPrice && (
-              <span className="text-xs font-semibold text-neutral-400"> - P{maxPrice}</span>
+        <div className="flex items-end justify-between gap-2 border-t border-white/10 pt-3">
+          <p className="font-mono text-base font-black leading-none text-white sm:text-lg" data-price>
+            {formatBWP(minPriceBWP)}
+            {hasPriceRange && (
+              <span className="ml-1 text-xs font-semibold text-neutral-400">– {formatBWP(maxPriceBWP)}</span>
             )}
-          </div>
+          </p>
 
           <span
             aria-hidden="true"
-            className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
+            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-all duration-300 ${
               isSoldOut
-                ? 'bg-white/[0.04] text-neutral-400 border border-white/5 cursor-not-allowed'
-                : 'bg-white/[0.08] hover:bg-orangeMoney text-white border border-white/15 group-hover:bg-gradient-to-r group-hover:from-orangeMoney group-hover:to-orangeMoney-dark group-hover:border-orangeMoney group-hover:shadow-glow-orange'
+                ? 'border-white/10 bg-white/[0.03] text-neutral-400'
+                : 'border-white/12 bg-white/[0.06] text-white group-hover:border-orangeMoney group-hover:bg-gradient-to-r group-hover:from-orangeMoney group-hover:to-orangeMoney-dark group-hover:shadow-[0_10px_25px_-12px_rgba(255,102,0,1)]'
             }`}
           >
-            <Plus size={14} aria-hidden="true" />
-            <span>Select</span>
+            <Plus size={13} />
+            <span>{isSoldOut ? 'Sold out' : 'Select'}</span>
           </span>
         </div>
       </div>

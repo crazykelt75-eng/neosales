@@ -1,268 +1,301 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, ArrowRight, ShoppingBag, Truck, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Bookmark, Minus, MessageCircle, Plus, ShoppingBag, Trash2, Truck, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
-import { CheckoutModal } from '@/components/checkout/CheckoutModal';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Button } from '@/components/ui/Button';
+import { formatBWP } from '@/lib/format';
 import { getOptimizedImageUrl } from '@/lib/imageUtils';
+import { findVariant, getCartSubtotal } from '@/lib/product';
+import { SELLER_CONFIG } from '@/lib/constants';
 
+const TITLE_ID = 'bag-drawer-title';
+
+/**
+ * Slide-over shopping bag.
+ *
+ * Focus is trapped inside the drawer, Escape closes it, the trigger regains
+ * focus on close, and background scrolling is locked while it is open.
+ */
 export function CartDrawer() {
-  const { cart, removeFromCart, updateCartQuantity, cartSubtotal, isCartOpen, setIsCartOpen } =
-    useStore();
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const {
+    cart,
+    cartCount,
+    cartSubtotal,
+    isCartOpen,
+    closeCart,
+    incrementCartItem,
+    decrementCartItem,
+    removeFromCart,
+    openCheckout,
+    savedProductIds,
+    openSaved,
+    promoCodes,
+  } = useStore();
 
-  // Focus management: Trap focus inside drawer & restore previous focus on close
-  useEffect(() => {
-    if (isCartOpen) {
-      previousFocusRef.current = document.activeElement as HTMLElement | null;
-      setTimeout(() => {
-        const focusable = drawerRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-        );
-        if (focusable && focusable.length > 0) {
-          focusable[0].focus();
-        }
-      }, 50);
-    } else if (previousFocusRef.current) {
-      previousFocusRef.current.focus();
-    }
-  }, [isCartOpen]);
+  const [isMounted, setIsMounted] = useState(false);
+  const containerRef = useFocusTrap<HTMLDivElement>(isCartOpen, closeCart);
 
-  // Handle Tab focus trapping and Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsCartOpen(false);
-        return;
-      }
+  useEffect(() => setIsMounted(true), []);
 
-      if (e.key === 'Tab' && drawerRef.current) {
-        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-        );
-        if (focusable.length === 0) return;
+  if (!isMounted || !isCartOpen) return null;
 
-        const firstEl = focusable[0];
-        const lastEl = focusable[focusable.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === firstEl) {
-            e.preventDefault();
-            lastEl.focus();
-          }
-        } else {
-          if (document.activeElement === lastEl) {
-            e.preventDefault();
-            firstEl.focus();
-          }
-        }
-      }
-    };
-
-    if (isCartOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-    };
-  }, [isCartOpen, setIsCartOpen]);
-
-  if (!isCartOpen) return null;
-
-  return (
-    <>
+  return createPortal(
+    <div className="fixed inset-0 z-[75]">
       <div
+        className="absolute inset-0 animate-fadeIn bg-black/75 backdrop-blur-md"
+        onClick={closeCart}
+        aria-hidden="true"
+      />
+
+      <div
+        ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Shopping Bag"
-        className="fixed inset-0 z-50 overflow-hidden animate-fadeIn"
+        aria-labelledby={TITLE_ID}
+        tabIndex={-1}
+        className="absolute inset-y-0 right-0 flex w-full max-w-md animate-slideInRight flex-col border-l border-white/10 bg-surface shadow-elevated focus:outline-none"
       >
-        {/* Backdrop */}
-        <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity cursor-pointer"
-          onClick={() => setIsCartOpen(false)}
-          aria-hidden="true"
-        />
-
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
-          <div
-            ref={drawerRef}
-            className="w-screen max-w-md bg-[#0c0e16] text-white border-l border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex flex-col animate-slideUp sm:animate-none"
-          >
-            {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-[#08090f]/90 backdrop-blur-md">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-orangeMoney/20 border border-orangeMoney/40 text-orangeMoney flex items-center justify-center shadow-glow-orange">
-                  <ShoppingBag size={16} aria-hidden="true" />
-                </div>
-                <div>
-                  <h2 className="font-extrabold text-white text-base sm:text-lg tracking-tight">
-                    Your Shopping Bag
-                  </h2>
-                  <p className="text-[11px] text-neutral-400 font-medium">
-                    {cart.reduce((s, i) => s + i.quantity, 0)} items selected
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setIsCartOpen(false)}
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-400 hover:text-white rounded-full hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-orangeMoney"
-                aria-label="Close Shopping Bag"
-              >
-                <X size={20} aria-hidden="true" />
-              </button>
+        {/* Header */}
+        <header className="flex items-center justify-between gap-3 border-b border-white/10 bg-[#0a0c13]/90 px-4 py-4 backdrop-blur">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-orangeMoney/30 bg-orangeMoney/15 text-orangeMoney">
+              <ShoppingBag size={17} aria-hidden="true" />
+            </span>
+            <div>
+              <h2 id={TITLE_ID} className="text-sm font-extrabold text-white">
+                Your bag
+              </h2>
+              <p className="text-2xs font-semibold text-neutral-400">
+                {cartCount === 0 ? 'No items yet' : `${cartCount} item${cartCount === 1 ? '' : 's'}`}
+              </p>
             </div>
+          </div>
 
-            {/* Cart Items List */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 divide-y divide-white/10">
-              {cart.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-neutral-400 my-auto">
-                  <div className="w-20 h-20 bg-white/[0.04] border border-white/10 rounded-3xl flex items-center justify-center mb-4 text-neutral-400">
-                    <ShoppingBag size={32} aria-hidden="true" />
-                  </div>
-                  <h3 className="font-extrabold text-white text-lg mb-1">
-                    Your bag is empty
-                  </h3>
-                  <p className="text-xs text-neutral-400 mb-6 max-w-xs leading-relaxed">
-                    Browse our niche extrait fragrances or relaxed linen shirts to create your order.
-                  </p>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={() => setIsCartOpen(false)}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openSaved}
+              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] px-2.5 text-2xs font-bold uppercase tracking-wide text-neutral-300 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+              aria-label={`View saved items, ${savedProductIds.length} saved`}
+            >
+              <Bookmark size={14} aria-hidden="true" />
+              {savedProductIds.length > 0 ? `Saved ${savedProductIds.length}` : 'Saved'}
+            </button>
+
+            <button
+              type="button"
+              onClick={closeCart}
+              aria-label="Close bag"
+              className="rounded-xl border border-white/10 bg-white/[0.05] p-2 text-neutral-300 transition-colors hover:bg-white/[0.12] hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+            >
+              <X size={17} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        {/* Items */}
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {cart.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-neutral-400">
+                <ShoppingBag size={24} aria-hidden="true" />
+              </span>
+              <p className="text-sm font-bold text-white">Your bag is empty</p>
+              <p className="max-w-[260px] text-xs leading-relaxed text-neutral-400">
+                Browse the catalog and add your favourite extraits or summer pieces.
+              </p>
+              <Button variant="secondary" size="md" onClick={closeCart}>
+                Continue shopping
+              </Button>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {cart.map((item) => {
+                const lineTotal = item.unitPriceBWP * item.quantity;
+                const liveVariant = findVariant(item.product, item.variantId);
+                const atCeiling = item.quantity >= (liveVariant?.stockQuantity ?? item.quantity);
+
+                return (
+                  <li
+                    key={item.variantId}
+                    className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3"
                   >
-                    Explore Products
-                  </Button>
-                </div>
-              ) : (
-                cart.map((item) => (
-                  <div key={item.variantId} className="pt-3.5 first:pt-0 flex gap-3.5 items-center">
-                    <div className="w-20 h-20 bg-[#08090f] rounded-2xl overflow-hidden flex-shrink-0 border border-white/10">
-                      <img
-                        src={getOptimizedImageUrl(item.product.imageUrls[0], 200)}
-                        alt={item.product.title}
-                        decoding="async"
-                        loading="lazy"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
+                    <img
+                      src={getOptimizedImageUrl(item.product.imageUrls[0], 200)}
+                      alt={item.product.title}
+                      width={80}
+                      height={100}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-[84px] w-[68px] flex-shrink-0 rounded-xl border border-white/10 object-cover"
+                    />
 
-                    <div className="flex-1 flex flex-col justify-between min-w-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                    <div className="flex min-w-0 flex-1 flex-col justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-xs font-bold text-white" title={item.product.title}>
                             {item.product.title}
-                          </h4>
-                          <p className="text-[11px] text-neutral-400 font-semibold mt-0.5">
+                          </h3>
+                          <p className="mt-0.5 truncate text-2xs font-semibold text-neutral-400">
                             {item.variantLabel}
                           </p>
-                          {item.variant.stockQuantity <= 3 && item.variant.stockQuantity > 0 && (
-                            <span className="text-[10px] text-amber-300 font-bold flex items-center gap-1 mt-0.5">
-                              ⚡ Only {item.variant.stockQuantity} left
-                            </span>
-                          )}
+                          <p className="mt-0.5 font-mono text-2xs text-neutral-400" data-price>
+                            {formatBWP(item.unitPriceBWP)} each
+                          </p>
                         </div>
+
                         <button
+                          type="button"
                           onClick={() => removeFromCart(item.variantId)}
-                          className="min-w-[36px] min-h-[36px] text-neutral-400 hover:text-red-400 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-red-400"
                           aria-label={`Remove ${item.product.title} from bag`}
-                          title="Remove item"
+                          className="-mr-1 -mt-1 rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-red-500/15 hover:text-red-300 focus-visible:outline-2 focus-visible:outline-red-400"
                         >
-                          <Trash2 size={16} aria-hidden="true" />
+                          <Trash2 size={15} aria-hidden="true" />
                         </button>
                       </div>
 
-                      <div className="flex items-center justify-between mt-2.5">
-                        {/* Touch-optimized quantity stepper */}
-                        <div className="flex items-center border border-white/15 rounded-xl overflow-hidden bg-white/[0.04]">
+                      <div className="flex items-center justify-between gap-2">
+                        <div
+                          role="group"
+                          aria-label={`Quantity for ${item.product.title}`}
+                          className="inline-flex items-center gap-1 rounded-xl border border-white/12 bg-black/30 p-1"
+                        >
                           <button
                             type="button"
+                            onClick={() => decrementCartItem(item.variantId)}
                             aria-label={`Decrease quantity of ${item.product.title}`}
-                            onClick={() => updateCartQuantity(item.variantId, -1)}
-                            className="w-8 h-8 font-bold text-neutral-300 hover:bg-white/10 active:bg-white/20 flex items-center justify-center transition-colors"
+                            className="rounded-lg p-1.5 text-neutral-200 transition-colors hover:bg-white/10"
                           >
-                            -
+                            <Minus size={13} aria-hidden="true" />
                           </button>
-                          <span className="w-7 text-center text-xs font-black text-white font-mono">
+
+                          <span className="min-w-[26px] text-center font-mono text-xs font-bold text-white">
                             {item.quantity}
                           </span>
+
                           <button
                             type="button"
+                            onClick={() => incrementCartItem(item.variantId)}
+                            disabled={atCeiling}
                             aria-label={`Increase quantity of ${item.product.title}`}
-                            onClick={() => updateCartQuantity(item.variantId, 1)}
-                            className="w-8 h-8 font-bold text-neutral-300 hover:bg-white/10 active:bg-white/20 flex items-center justify-center transition-colors"
+                            className="rounded-lg p-1.5 text-neutral-200 transition-colors hover:bg-white/10 disabled:opacity-30"
                           >
-                            +
+                            <Plus size={13} aria-hidden="true" />
                           </button>
                         </div>
 
-                        <span className="font-black text-sm text-white font-mono">
-                          P{(item.variant.priceBWP * item.quantity).toFixed(2)}
+                        <span className="font-mono text-sm font-black text-white" data-price>
+                          {formatBWP(lineTotal)}
                         </span>
                       </div>
+
+                      {atCeiling && (
+                        <p className="text-2xs font-semibold text-amber-300">
+                          Max stock reached for this option
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer Summary & Checkout CTA */}
-            {cart.length > 0 && (
-              <div className="p-4 sm:p-5 bg-[#08090f] border-t border-white/10 space-y-3 pb-safe">
-                {/* Local fulfillment pill */}
-                <div className="flex items-center gap-2.5 text-[11px] text-neutral-300 bg-white/[0.04] border border-white/10 p-2.5 rounded-xl shadow-xs">
-                  <Truck size={16} className="text-orangeMoney flex-shrink-0" aria-hidden="true" />
-                  <span>
-                    Pick up in Francistown or Tati Siding for <strong className="text-emerald-400">Free</strong> or dispatch nationwide with Sprint Couriers.
-                  </span>
-                </div>
-
-                <div className="space-y-1.5 pt-1 text-xs">
-                  <div className="flex justify-between text-neutral-400">
-                    <span>Subtotal</span>
-                    <span className="font-bold text-white font-mono">P{cartSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-neutral-400">
-                    <span>Delivery Fee</span>
-                    <span className="text-neutral-400 font-medium">Selected at next step</span>
-                  </div>
-                  <div className="flex justify-between text-base font-black text-white pt-2 border-t border-white/10">
-                    <span>Total Due</span>
-                    <span className="text-lg text-orangeMoney font-mono">P{cartSubtotal.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <Button
-                  variant="primary"
-                  size="lg"
-                  onClick={() => setIsCheckoutOpen(true)}
-                  className="w-full py-4 text-sm sm:text-base font-extrabold shadow-glow-orange"
-                  rightIcon={<ArrowRight size={18} aria-hidden="true" />}
-                >
-                  Proceed to Checkout
-                </Button>
-              </div>
-            )}
-          </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
-      </div>
 
-      {/* Checkout Modal */}
-      {isCheckoutOpen && (
-        <CheckoutModal
-          onClose={() => setIsCheckoutOpen(false)}
-          onOrderComplete={() => {
-            setIsCheckoutOpen(false);
-            setIsCartOpen(false);
-          }}
-        />
-      )}
-    </>
+        {/* Summary */}
+        {cart.length > 0 && (
+          <footer className="border-t border-white/10 bg-[#0a0c13]/95 px-4 pb-safe pt-4 backdrop-blur">
+            <dl className="space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <dt className="font-semibold text-neutral-300">Subtotal</dt>
+                <dd className="font-mono text-sm font-bold text-white" data-price>
+                  {formatBWP(cartSubtotal)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="flex items-center gap-1.5 font-semibold text-neutral-300">
+                  <Truck size={13} className="text-emerald-400" aria-hidden="true" />
+                  Delivery
+                </dt>
+                <dd className="text-2xs font-bold uppercase tracking-wide text-emerald-300">
+                  Free Francistown pickup
+                </dd>
+              </div>
+            </dl>
+
+            <Button
+              variant="primary"
+              size="lg"
+              fullWidth
+              className="mt-3.5"
+              onClick={openCheckout}
+              rightIcon={<span aria-hidden="true">→</span>}
+            >
+              Checkout · {formatBWP(cartSubtotal)}
+            </Button>
+
+            <p className="mt-2 text-center text-2xs leading-relaxed text-neutral-400">
+              Pay with Orange Money or FNB Pay2Cell · Courier delivery quoted next step
+            </p>
+
+            <a
+              href={buildBagEnquiryLink(cart, cartSubtotal, promoCodes)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2.5 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-whatsapp/40 bg-whatsapp/10 text-xs font-bold text-whatsapp transition-colors hover:bg-whatsapp/20 focus-visible:outline-2 focus-visible:outline-whatsapp"
+            >
+              <MessageCircle size={15} aria-hidden="true" />
+              Send this bag on WhatsApp instead
+            </a>
+
+            <p className="mt-1.5 text-center text-2xs leading-relaxed text-neutral-400">
+              Not ready to check out? Send the list to us and we will hold the stock for you.
+            </p>
+          </footer>
+        )}
+      </div>
+    </div>,
+    document.body
   );
+}
+
+/**
+ * Pre-fills a WhatsApp message with the current bag so an undecided shopper can
+ * hand the list to the seller instead of abandoning it silently.
+ */
+function buildBagEnquiryLink(
+  cart: ReturnType<typeof useStore>['cart'],
+  subtotal: number,
+  promoCodes: ReturnType<typeof useStore>['promoCodes']
+): string {
+  const lines = cart
+    .map(
+      (item, index) =>
+        `${index + 1}. ${item.product.title}\n   ${item.variantLabel} × ${item.quantity} — P${(
+          item.unitPriceBWP * item.quantity
+        ).toFixed(2)}`
+    )
+    .join('\n');
+
+  const bundle =
+    cart.filter((item) => item.product.category === 'perfumes').reduce((sum, item) => sum + item.quantity, 0) >= 2;
+
+  const message = [
+    `Dumelang ${SELLER_CONFIG.storeName}! I am interested in these pieces:`,
+    '',
+    lines,
+    '',
+    `Subtotal: P${subtotal.toFixed(2)}`,
+    bundle ? 'I understand the 2+ extrait bundle discount applies.' : '',
+    promoCodes.length > 0 ? `Active codes you shared: ${promoCodes.filter((p) => p.isActive).map((p) => p.code).join(', ')}` : '',
+    '',
+    'Please confirm availability and the total including delivery.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return `https://wa.me/${SELLER_CONFIG.sellerWhatsApp.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
 }

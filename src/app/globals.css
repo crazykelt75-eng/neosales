@@ -4,26 +4,20 @@
 
 @layer base {
   :root {
-    --foreground-rgb: 248, 250, 252;
-    --background-start: #07080c;
-    --background-end: #0c0e15;
-    
-    /* Design Tokens - Midnight Obsidian Luxury */
+    --midnight: #07080c;
     --surface-card: #0e1118;
     --surface-elevated: #131722;
-    --surface-subtle: #181d2a;
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-hover: rgba(255, 255, 255, 0.2);
-    
-    /* Semantic Status */
-    --color-success: #10b981;
-    --color-warning: #f59e0b;
-    --color-error: #ef4444;
-    --color-info: #06b6d4;
+    --accent-orange: #ff6600;
+    --accent-amber: #f59e0b;
+    --accent-emerald: #10b981;
 
-    /* Safe Area Insets fallback */
-    --sab: env(safe-area-inset-bottom, 0px);
+    /* Font stacks: Plus Jakarta Sans / JetBrains Mono are loaded in layout.tsx
+       with graceful fallbacks so the UI never depends on a network font fetch. */
+    --font-jakarta: 'Plus Jakarta Sans', 'Inter', system-ui;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
     --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
   }
 
   html {
@@ -33,74 +27,106 @@
   }
 
   body {
-    color: rgb(var(--foreground-rgb));
-    background-color: #07080c;
-    background-image: 
-      radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255, 102, 0, 0.14), transparent 70%),
-      radial-gradient(ellipse 60% 40% at 100% 25%, rgba(0, 203, 255, 0.05), transparent 60%),
-      radial-gradient(ellipse 50% 50% at 0% 65%, rgba(255, 102, 0, 0.04), transparent 50%);
+    background-color: var(--midnight);
+    background-image: radial-gradient(ellipse 85% 55% at 50% -12%, rgba(255, 102, 0, 0.13), transparent 70%),
+      radial-gradient(ellipse 55% 45% at 100% 8%, rgba(245, 158, 11, 0.06), transparent 65%);
     background-attachment: fixed;
     background-repeat: no-repeat;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    color: #f8fafc;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
   }
 
-  /* Universal focus-visible accessibility styling */
-  *:focus-visible {
-    outline: 2px solid #ff6600;
+  /* WCAG 2.2 2.4.11 — visible, high-contrast focus indicator everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--accent-orange);
     outline-offset: 2px;
+    border-radius: 4px;
   }
 
-  /* Ensure minimum touch target for mobile interactive tags where possible */
-  button, 
-  [role="button"], 
-  a, 
-  input[type="button"], 
-  input[type="submit"] {
+  ::selection {
+    background-color: rgba(255, 102, 0, 0.35);
+    color: #ffd9bd;
+  }
+
+  button,
+  [role='button'],
+  a,
+  input,
+  select,
+  textarea {
     touch-action: manipulation;
+  }
+
+  /* Tabular numerals keep Pula prices aligned in lists and summaries. */
+  .font-mono,
+  [data-price] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
   }
 }
 
 @layer utilities {
-  /* Safe Area Support */
   .pb-safe {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
+
   .bottom-safe {
     bottom: max(1rem, env(safe-area-inset-bottom));
+    bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.25rem));
   }
 
-  /* Frosted Glass surfaces */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Frosted luxury glass surfaces. */
   .glass-panel {
-    background: rgba(14, 17, 24, 0.82);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background-color: rgba(14, 17, 24, 0.82);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .glass-panel-dark {
-    background: rgba(10, 12, 18, 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+  .glass-panel-strong {
+    background-color: rgba(9, 11, 16, 0.94);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  /* Micro-interactions */
-  .interactive-scale {
-    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  .hairline {
+    border-color: rgba(255, 255, 255, 0.1);
   }
-  .interactive-scale:active {
-    transform: scale(0.98);
+
+  /* Skeleton shimmer used while local imagery decodes. */
+  .shimmer {
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.09) 50%,
+      rgba(255, 255, 255, 0.03) 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 }
 
-/* Custom Scrollbar */
+/* Custom scrollbars that match the dark canvas. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -108,68 +134,186 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e2230;
+  background: #232838;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 2px solid #07080c;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2d3345;
+  background: #333a4f;
 }
 
-/* Shimmer Loading Skeleton Animation */
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.animate-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(255, 255, 255, 0.03) 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite linear;
-}
-
-/* Subtle Pulse for urgent stock badges */
-@keyframes pulse-subtle {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.85;
-    transform: scale(1.02);
+/* Honour the OS "reduce motion" preference (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+/* ---------------------------------------------------------------------------
+   Printable packing slip / waybill
+   The on-screen preview sits inside the modal; the print copy is portaled to
+   <body> so we can hide the whole application and print the slip alone.
+   --------------------------------------------------------------------------- */
+
+.packing-slip-portal {
+  display: none;
 }
 
-/* Hero Spotlight Progress Bar */
-@keyframes heroProgress {
-  0% { width: 0%; }
-  100% { width: 100%; }
+.packing-slip {
+  font-family: var(--font-jakarta);
+  color: #111827;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
-.hero-progress-bar {
-  animation: heroProgress 6s linear forwards;
+.packing-slip__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 2px solid #111827;
+  padding-bottom: 8px;
 }
 
-/* Star rating filled/empty */
-.star-filled {
-  color: #fbbf24;
-  filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.4));
+.packing-slip__brand {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #07080c;
 }
 
-.star-empty {
-  color: rgba(255, 255, 255, 0.2);
+.packing-slip__dot {
+  color: #ff6600;
+}
+
+.packing-slip__order {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.packing-slip__meta {
+  text-align: right;
+}
+
+.packing-slip__muted {
+  color: #6b7280;
+}
+
+.packing-slip__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.packing-slip__strong {
+  font-weight: 700;
+}
+
+.packing-slip__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.packing-slip__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.packing-slip__table th {
+  border-bottom: 1px solid #d1d5db;
+  padding: 4px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #6b7280;
+  text-align: left;
+}
+
+.packing-slip__table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 5px 6px;
+  vertical-align: top;
+}
+
+.packing-slip__qty {
+  width: 34px;
+  text-align: center;
+}
+
+.packing-slip__sku {
+  width: 30%;
+  color: #4b5563;
+}
+
+.packing-slip__amount {
+  width: 70px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.packing-slip__totals {
+  margin-top: 10px;
+  margin-left: auto;
+  width: 220px;
+}
+
+.packing-slip__totals p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.packing-slip__total {
+  border-top: 2px solid #111827;
+  margin-top: 4px;
+  padding-top: 4px !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.packing-slip__footer {
+  margin-top: 16px;
+  border-top: 1px dashed #9ca3af;
+  padding-top: 8px;
+}
+
+@media print {
+  /* Print only the slip: hide every top-level node except the slip portal. */
+  body > *:not(.packing-slip-portal) {
+    display: none !important;
+  }
+
+  .packing-slip-portal {
+    display: block !important;
+  }
+
+  .packing-slip-portal .packing-slip {
+    padding: 10mm;
+    color: #000;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  @page {
+    size: A5;
+    margin: 8mm;
+  }
 }

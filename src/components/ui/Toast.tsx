@@ -1,7 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -12,75 +12,85 @@ export interface ToastMessage {
   description?: string;
 }
 
-interface ToastContextType {
+interface ToastContextValue {
   showToast: (toast: Omit<ToastMessage, 'id'>) => void;
+  dismissToast: (id: string) => void;
 }
 
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
+const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
+const AUTO_DISMISS_MS = 4000;
+
+const ICONS: Record<ToastType, React.ReactNode> = {
+  success: <CheckCircle2 size={18} className="text-emerald-400" aria-hidden="true" />,
+  error: <AlertTriangle size={18} className="text-red-400" aria-hidden="true" />,
+  info: <Info size={18} className="text-amber-400" aria-hidden="true" />,
+};
+
+const ACCENTS: Record<ToastType, string> = {
+  success: 'border-emerald-500/30 shadow-[0_0_25px_-10px_rgba(16,185,129,0.6)]',
+  error: 'border-red-500/30 shadow-[0_0_25px_-10px_rgba(239,68,68,0.6)]',
+  info: 'border-amber-500/30 shadow-[0_0_25px_-10px_rgba(245,158,11,0.6)]',
+};
+
+/**
+ * Accessible toast queue. Messages are announced through a polite live region
+ * so screen reader users hear "Product added to bag" without losing focus.
+ */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const dismissToast = useCallback((id: string) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
   const showToast = useCallback(
     ({ type, title, description }: Omit<ToastMessage, 'id'>) => {
-      const id = Math.random().toString(36).substring(2, 9);
-      const newToast: ToastMessage = { id, type, title, description };
-      setToasts((prev) => [...prev, newToast]);
-
-      setTimeout(() => {
-        removeToast(id);
-      }, 3500);
+      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setToasts((current) => [...current.slice(-2), { id, type, title, description }]);
+      window.setTimeout(() => dismissToast(id), AUTO_DISMISS_MS);
     },
-    [removeToast]
+    [dismissToast]
   );
 
+  const value = useMemo(() => ({ showToast, dismissToast }), [showToast, dismissToast]);
+
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={value}>
       {children}
-      {/* Toast viewport */}
+
       <div
-        className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"
+        role="region"
+        aria-label="Notifications"
         aria-live="polite"
-        aria-atomic="true"
+        aria-atomic="false"
+        className="pointer-events-none fixed inset-x-0 top-3 z-[80] flex flex-col items-center gap-2 px-4 sm:inset-x-auto sm:right-4 sm:items-end"
       >
         {toasts.map((toast) => (
           <div
             key={toast.id}
             role="status"
-            className="pointer-events-auto flex items-start gap-3 p-3.5 bg-neutral-900 text-white rounded-2xl shadow-elevated border border-neutral-800 animate-slideUp transition-all duration-200"
+            className={`pointer-events-auto w-full max-w-sm animate-slideUp rounded-2xl border bg-surface/95 p-3.5 backdrop-blur-xl ${ACCENTS[toast.type]}`}
           >
-            <div className="flex-shrink-0 mt-0.5">
-              {toast.type === 'success' && (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              )}
-              {toast.type === 'error' && (
-                <AlertCircle className="w-5 h-5 text-red-400" />
-              )}
-              {toast.type === 'info' && (
-                <Info className="w-5 h-5 text-sky-400" />
-              )}
-            </div>
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex-shrink-0">{ICONS[toast.type]}</span>
 
-            <div className="flex-1">
-              <p className="text-xs font-bold leading-tight">{toast.title}</p>
-              {toast.description && (
-                <p className="text-[11px] text-neutral-300 mt-0.5 leading-relaxed">
-                  {toast.description}
-                </p>
-              )}
-            </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold leading-snug text-white">{toast.title}</p>
+                {toast.description && (
+                  <p className="mt-0.5 text-xs leading-relaxed text-neutral-300">{toast.description}</p>
+                )}
+              </div>
 
-            <button
-              onClick={() => removeToast(toast.id)}
-              className="p-1 text-neutral-400 hover:text-white rounded-lg transition-colors flex-shrink-0"
-              aria-label="Close notification"
-            >
-              <X size={14} />
-            </button>
+              <button
+                type="button"
+                onClick={() => dismissToast(toast.id)}
+                aria-label="Dismiss notification"
+                className="-m-1 rounded-lg p-1.5 text-neutral-400 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-orangeMoney"
+              >
+                <X size={15} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -88,7 +98,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useToast() {
+export function useToast(): ToastContextValue {
   const context = useContext(ToastContext);
   if (!context) {
     throw new Error('useToast must be used within a ToastProvider');

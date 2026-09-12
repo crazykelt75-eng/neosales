@@ -43,9 +43,6 @@ export function Header() {
               className="ml-0.5 inline-block h-2 w-2 rounded-full bg-orangeMoney align-super transition-transform duration-300 group-hover:scale-125"
             />
           </span>
-          <span className="hidden text-2xs font-semibold uppercase tracking-[0.18em] text-neutral-400 lg:inline">
-            Francistown · Botswana
-          </span>
         </Link>
 
         {/* Desktop navigation */}

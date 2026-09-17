@@ -108,6 +108,9 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
             <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isSubmitting} leftIcon={<ShieldCheck size={16} />}>
               Sign in securely
             </Button>
+            <Link href="/reset-password" className="block text-center text-2xs font-semibold text-orangeMoney transition-colors hover:text-orangeMoney-light">
+              Forgot your password?
+            </Link>
           </form>
         </div>
 

@@ -320,7 +320,9 @@ export async function fetchPromoCodes(): Promise<PromoCode[]> {
 export async function fetchLiveReviews(): Promise<CustomerReview[]> {
   const { data, error } = await requireSupabase()
     .from('customer_reviews')
-    .select('id,product_id,customer_name,town,rating,comment,is_verified,reviewed_on,orders(order_number)')
+    // Do not join orders in this public query. Orders intentionally have no
+    // anon SELECT privilege because they contain private customer details.
+    .select('id,product_id,customer_name,town,rating,comment,is_verified,reviewed_on')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row) => ({
@@ -332,9 +334,6 @@ export async function fetchLiveReviews(): Promise<CustomerReview[]> {
     comment: row.comment,
     verified: row.is_verified,
     date: row.reviewed_on,
-    orderNumber: Array.isArray(row.orders)
-      ? row.orders[0]?.order_number
-      : (row.orders as { order_number?: string } | null)?.order_number,
   }));
 }
 

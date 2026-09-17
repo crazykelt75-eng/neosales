@@ -174,15 +174,15 @@ export function Footer() {
 
           <nav aria-label="Shop" className="space-y-2.5">
             <h3 className="text-2xs font-bold uppercase tracking-[0.16em] text-neutral-400">Shop</h3>
-            <a href="#catalog" className="block text-xs text-neutral-200 transition-colors hover:text-orangeMoney">
+            <Link href="/#catalog" className="block text-xs text-neutral-200 transition-colors hover:text-orangeMoney">
               Shop collection
-            </a>
-            <a
-              href="#delivery-info"
+            </Link>
+            <Link
+              href="/#delivery-info"
               className="block text-xs text-neutral-200 transition-colors hover:text-orangeMoney"
             >
               Delivery &amp; pickup
-            </a>
+            </Link>
             <Link href="/track" className="block text-xs text-neutral-200 transition-colors hover:text-orangeMoney">
               Track my order
             </Link>

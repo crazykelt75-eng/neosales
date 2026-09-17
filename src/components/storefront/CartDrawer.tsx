@@ -8,7 +8,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { Button } from '@/components/ui/Button';
 import { formatBWP } from '@/lib/format';
 import { getOptimizedImageUrl } from '@/lib/imageUtils';
-import { findVariant, getCartSubtotal } from '@/lib/product';
+import { findVariant } from '@/lib/product';
 import { SELLER_CONFIG } from '@/lib/constants';
 
 const TITLE_ID = 'bag-drawer-title';

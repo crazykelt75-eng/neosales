@@ -9,7 +9,7 @@
  *     immutable), with a background refresh of the cache.
  */
 
-const CACHE_VERSION = 'neosales-v1';
+const CACHE_VERSION = 'neosales-v2';
 const APP_SHELL = [
   '/',
   '/track',

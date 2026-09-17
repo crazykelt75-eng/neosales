@@ -29,7 +29,7 @@ import {
 } from '@/types';
 import { CUSTOMER_REVIEWS, INITIAL_ORDERS, INITIAL_PRODUCTS } from '@/lib/mockData';
 import { DELIVERY_OPTIONS_BY_ID } from '@/lib/constants';
-import { STORAGE_KEYS, clearStorefrontCache, readStorage, removeStorage, writeStorage } from '@/lib/storage';
+import { STORAGE_KEYS, clearStorefrontCache, readStorage, writeStorage } from '@/lib/storage';
 import { generateOrderNumber, isValidBotswanaPhone, normaliseBotswanaPhone } from '@/lib/whatsapp';
 import { ORDER_STATUS_META } from '@/lib/constants';
 import { DEFAULT_PROMO_CODES, getAutomaticBundleDiscount, validatePromoCode } from '@/lib/promo';
@@ -352,23 +352,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const applySession = async (email?: string) => {
-      const authorized = Boolean(email) && (await isCurrentUserAdmin());
-      if (cancelled) return;
-      setIsAdminUnlocked(authorized);
-      setAdminEmail(authorized ? email : undefined);
-      if (authorized) {
-        const [liveOrders, allProducts] = await Promise.all([fetchLiveOrders(), fetchAdminProducts()]);
-        if (!cancelled) {
-          commitOrders(liveOrders);
-          commitProducts(allProducts);
-          const alerts = await fetchCloudStockAlerts(allProducts);
+      try {
+        const authorized = Boolean(email) && (await isCurrentUserAdmin());
+        if (cancelled) return;
+        setIsAdminUnlocked(authorized);
+        setAdminEmail(authorized ? email : undefined);
+        if (authorized) {
+          const [liveOrders, allProducts] = await Promise.all([fetchLiveOrders(), fetchAdminProducts()]);
           if (!cancelled) {
-            stockAlertsRef.current = alerts;
-            setStockAlerts(alerts);
+            commitOrders(liveOrders);
+            commitProducts(allProducts);
+            const alerts = await fetchCloudStockAlerts(allProducts);
+            if (!cancelled) {
+              stockAlertsRef.current = alerts;
+              setStockAlerts(alerts);
+            }
           }
         }
+      } catch {
+        if (!cancelled) {
+          setIsAdminUnlocked(false);
+          setAdminEmail(undefined);
+        }
+      } finally {
+        if (!cancelled) setIsAdminAuthLoading(false);
       }
-      setIsAdminAuthLoading(false);
     };
 
     void getAdminSession()
@@ -772,7 +780,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         description: notes?.trim() ? notes.trim() : undefined,
       });
     },
-    [buildEvent, commitOrders, isAdminUnlocked, showToast]
+    [buildEvent, commitOrders, showToast]
   );
 
   /** Attaches the mobile money transaction ID to an order (customer or seller). */
@@ -1189,7 +1197,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       showToast({
         type: 'success',
         title: 'Thank you for the review',
-        description: review.verified ? 'Published with a verified buyer badge.' : 'Published on the product page.',
+        description: review.verified
+          ? 'Published with a verified buyer badge.'
+          : isSupabaseConfigured()
+            ? 'Submitted for seller approval.'
+            : 'Published on the product page.',
       });
 
       return true;

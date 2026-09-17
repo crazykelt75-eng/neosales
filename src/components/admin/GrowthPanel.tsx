@@ -544,7 +544,7 @@ function ReviewManager({
 
         <p className="mt-3 flex items-center gap-2 text-2xs leading-relaxed text-neutral-400">
           <Users size={12} aria-hidden="true" />
-          Buyers leave reviews from any shareable product page. Adding their <span className="font-mono">ORD-…</span>{' '}
+          Buyers leave reviews from any shareable product page. Adding their <span className="font-mono">NS-…</span>{' '}
           reference earns the verified badge automatically — it is only granted when the order exists and contains that
           product.
         </p>

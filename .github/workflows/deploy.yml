@@ -31,6 +31,12 @@ jobs:
       - name: Validate TypeScript
         run: npm run type-check
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
       - name: Build Static Export
         run: npm run build
         env:

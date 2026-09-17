@@ -32,7 +32,6 @@ import { PackingSlip } from '@/components/admin/PackingSlip';
 import {
   DELIVERY_OPTIONS_BY_ID,
   ORDER_STATUS_META,
-  PAYMENT_OPTIONS_BY_ID,
   PICKUP_WINDOWS,
   SELLER_CONFIG,
 } from '@/lib/constants';
@@ -355,7 +354,6 @@ function OrderCard({ order, onTransition, onSaveReference, onRequestCancel, onPr
   const [slotPoint, setSlotPoint] = useState(order.pickupSlot?.point ?? SELLER_CONFIG.pickupPoints[0]);
 
   const delivery = DELIVERY_OPTIONS_BY_ID[order.customer.deliveryPreference];
-  const payment = PAYMENT_OPTIONS_BY_ID[order.paymentMethod];
   const paymentBadge = PAYMENT_BADGES[order.paymentMethod];
   const workflowStatus = order.status as WorkflowStatus;
   const nextStatus = NEXT_STATUS[workflowStatus];

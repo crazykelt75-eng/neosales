@@ -19,6 +19,9 @@ dist/
 .wrangler/
 .mf/
 
+# Supabase CLI local state
+supabase/.temp/
+
 # Vercel
 .vercel/
 

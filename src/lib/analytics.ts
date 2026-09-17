@@ -16,8 +16,6 @@ export const OPEN_STATUSES: OrderStatus[] = ['pending_verification', 'payment_co
 /** Hours an order may sit in Pending Verification before it needs chasing. */
 export const PENDING_CHASE_HOURS = 24;
 
-const PAYMENT_RAILS: PaymentMethod[] = ['orange_money', 'fnb_pay2cell', 'cash_on_pickup'];
-
 /** Local calendar date (`YYYY-MM-DD`) in Botswana time, used for daily cash-ups. */
 export function toBotswanaDateKey(isoDate: string): string {
   const date = new Date(isoDate);

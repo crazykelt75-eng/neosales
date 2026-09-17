@@ -29,30 +29,39 @@ import {
 } from '@/types';
 import { CUSTOMER_REVIEWS, INITIAL_ORDERS, INITIAL_PRODUCTS } from '@/lib/mockData';
 import { DELIVERY_OPTIONS_BY_ID } from '@/lib/constants';
-import { STORAGE_KEYS, clearStorefrontCache, readStorage, removeStorage, writeStorage } from '@/lib/storage';
+import { STORAGE_KEYS, clearStorefrontCache, readStorage, writeStorage } from '@/lib/storage';
 import { generateOrderNumber, isValidBotswanaPhone, normaliseBotswanaPhone } from '@/lib/whatsapp';
 import { ORDER_STATUS_META } from '@/lib/constants';
 import { DEFAULT_PROMO_CODES, getAutomaticBundleDiscount, validatePromoCode } from '@/lib/promo';
 import { findVariant, getCartCount, getCartSubtotal, getVariantLabel } from '@/lib/product';
 import {
+  createCloudAdminOrder,
+  createCloudOrder,
+  deleteCloudPromo,
+  deleteCloudStockAlert,
+  fetchAdminProducts,
+  fetchCloudStockAlerts,
   fetchLiveOrders,
   fetchLiveProducts,
+  fetchLiveReviews,
+  fetchPromoCodes,
+  getAdminSession,
+  isCurrentUserAdmin,
   isSupabaseConfigured,
-  persistOrder,
+  onAdminAuthStateChange,
+  persistProduct,
+  saveCloudPromo,
+  signInAdmin,
+  signOutAdmin,
+  submitCloudPaymentReference,
+  submitCloudReview,
+  subscribeCloudStockAlert,
   syncOrderStatus,
+  syncProductActive,
   syncVariantStock,
+  updateCloudStockAlert,
 } from '@/lib/supabaseClient';
 import { useToast } from '@/components/ui/Toast';
-
-/** PIN protecting `/admin`; overridable per deployment. */
-const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || '2670';
-const MAX_ADMIN_ATTEMPTS = 5;
-const ADMIN_LOCKOUT_MS = 60_000;
-
-interface AdminAttemptState {
-  attempts: number;
-  lockedUntil: number | null;
-}
 
 interface CheckoutInput {
   customer: OrderCustomer;
@@ -103,14 +112,14 @@ interface StoreContextValue {
 
   // Checkout & orders
   orders: Order[];
-  createOrder: (input: CheckoutInput) => Order;
+  createOrder: (input: CheckoutInput) => Promise<Order>;
   updateOrderStatus: (orderId: string, status: OrderStatus, notes?: string) => void;
   setOrderPaymentReference: (orderId: string, reference: string) => void;
   cancelOrder: (orderId: string, reason?: string) => void;
   reopenOrder: (orderId: string) => void;
   addOrderNote: (orderId: string, note: string) => void;
   setOrderPickupSlot: (orderId: string, slot: PickupSlot | null) => void;
-  recordOfflineSale: (input: OfflineSaleInput) => Order;
+  recordOfflineSale: (input: OfflineSaleInput) => Promise<Order>;
   selectedDelivery: DeliveryPreference;
   setSelectedDelivery: (preference: DeliveryPreference) => void;
 
@@ -146,12 +155,12 @@ interface StoreContextValue {
   recentlyViewedIds: string[];
   markViewed: (productId: string) => void;
 
-  // Admin session
+  // Seller authentication
   isAdminUnlocked: boolean;
-  adminAttemptsRemaining: number;
-  adminLockSecondsRemaining: number;
-  unlockAdmin: (pin: string) => { success: boolean; message: string };
-  lockAdmin: () => void;
+  isAdminAuthLoading: boolean;
+  adminEmail?: string;
+  unlockAdmin: (email: string, password: string) => Promise<void>;
+  lockAdmin: () => Promise<void>;
 
   // UI state
   activeProduct: Product | null;
@@ -198,8 +207,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
-  const [attemptState, setAttemptState] = useState<AdminAttemptState>({ attempts: 0, lockedUntil: null });
-  const [lockSecondsRemaining, setLockSecondsRemaining] = useState(0);
+  const [isAdminAuthLoading, setIsAdminAuthLoading] = useState(true);
+  const [adminEmail, setAdminEmail] = useState<string>();
 
   // Latest-state mirrors let mutators write to storage without stale closures.
   const productsRef = useRef(products);
@@ -261,7 +270,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     productsRef.current = hydratedProducts;
 
     const storedOrders = readStorage<Order[]>(STORAGE_KEYS.orders, []);
-    const hydratedOrders = storedOrders.length > 0 ? storedOrders : INITIAL_ORDERS;
+    // In live mode this cache only contains orders placed from this device.
+    // Demo orders must never leak into a production seller ledger.
+    const hydratedOrders = storedOrders.length > 0
+      ? storedOrders
+      : isSupabaseConfigured()
+        ? []
+        : INITIAL_ORDERS;
     setOrders(hydratedOrders);
     ordersRef.current = hydratedOrders;
 
@@ -311,93 +326,96 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     if (!isSupabaseConfigured()) return;
 
-    // Live Supabase hydration runs after the cached first paint.
-    setIsCloudSync(true);
-    void fetchLiveProducts().then((liveProducts) => {
-      if (liveProducts?.length) commitProducts(liveProducts);
-    });
-    void fetchLiveOrders().then((liveOrders) => {
-      if (liveOrders?.length) commitOrders(liveOrders);
-    });
+    // Public catalog and offers hydrate after the cached first paint. Orders
+    // are fetched only after an authorized seller session is established.
+    void Promise.all([fetchLiveProducts(), fetchPromoCodes(), fetchLiveReviews()])
+      .then(([liveProducts, livePromos, liveReviews]) => {
+        if (liveProducts.length) commitProducts(liveProducts);
+        if (livePromos.length) {
+          setPromoCodes(livePromos);
+          promoCodesRef.current = livePromos;
+        }
+        if (liveReviews.length) {
+          setReviews(liveReviews);
+          reviewsRef.current = liveReviews;
+        }
+        setIsCloudSync(true);
+      })
+      .catch(() => setIsCloudSync(false));
   }, [commitOrders, commitProducts]);
 
   /* ------------------------------------------------------------------ *
-   * Admin session (sessionStorage — cleared when the tab closes)
+   * Seller authentication (Supabase Auth + admin_users authorization)
    * ------------------------------------------------------------------ */
 
   useEffect(() => {
-    const session = readStorage<{ unlockedAt: number } | null>(STORAGE_KEYS.adminSession, null, 'session');
-    const attempts = readStorage<AdminAttemptState>(STORAGE_KEYS.adminAttempts, { attempts: 0, lockedUntil: null }, 'session');
+    let cancelled = false;
 
-    if (session) setIsAdminUnlocked(true);
-    setAttemptState(attempts);
-  }, []);
-
-  useEffect(() => {
-    if (!attemptState.lockedUntil) {
-      setLockSecondsRemaining(0);
-      return;
-    }
-
-    const tick = () => {
-      const remaining = Math.max(0, Math.ceil((attemptState.lockedUntil! - Date.now()) / 1000));
-      setLockSecondsRemaining(remaining);
-      if (remaining === 0) {
-        const reset: AdminAttemptState = { attempts: 0, lockedUntil: null };
-        setAttemptState(reset);
-        writeStorage(STORAGE_KEYS.adminAttempts, reset, 'session');
+    const applySession = async (email?: string) => {
+      try {
+        const authorized = Boolean(email) && (await isCurrentUserAdmin());
+        if (cancelled) return;
+        setIsAdminUnlocked(authorized);
+        setAdminEmail(authorized ? email : undefined);
+        if (authorized) {
+          const [liveOrders, allProducts] = await Promise.all([fetchLiveOrders(), fetchAdminProducts()]);
+          if (!cancelled) {
+            commitOrders(liveOrders);
+            commitProducts(allProducts);
+            const alerts = await fetchCloudStockAlerts(allProducts);
+            if (!cancelled) {
+              stockAlertsRef.current = alerts;
+              setStockAlerts(alerts);
+            }
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAdminUnlocked(false);
+          setAdminEmail(undefined);
+        }
+      } finally {
+        if (!cancelled) setIsAdminAuthLoading(false);
       }
     };
 
-    tick();
-    const interval = window.setInterval(tick, 1000);
-    return () => window.clearInterval(interval);
-  }, [attemptState.lockedUntil]);
+    void getAdminSession()
+      .then((session) => applySession(session?.user.email))
+      .catch(() => setIsAdminAuthLoading(false));
 
-  const unlockAdmin = useCallback(
-    (pin: string): { success: boolean; message: string } => {
-      if (attemptState.lockedUntil && attemptState.lockedUntil > Date.now()) {
-        const seconds = Math.ceil((attemptState.lockedUntil - Date.now()) / 1000);
-        return { success: false, message: `Too many attempts. Try again in ${seconds}s.` };
-      }
+    const unsubscribe = onAdminAuthStateChange((_event, session) => {
+      void applySession(session?.user.email);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [commitOrders, commitProducts]);
 
-      if (pin.trim() !== ADMIN_PIN) {
-        const attempts = attemptState.attempts + 1;
-        const isLockedOut = attempts >= MAX_ADMIN_ATTEMPTS;
-        const nextState: AdminAttemptState = {
-          attempts: isLockedOut ? 0 : attempts,
-          lockedUntil: isLockedOut ? Date.now() + ADMIN_LOCKOUT_MS : null,
-        };
-
-        setAttemptState(nextState);
-        writeStorage(STORAGE_KEYS.adminAttempts, nextState, 'session');
-
-        return {
-          success: false,
-          message: isLockedOut
-            ? `Too many incorrect attempts. Locked for ${ADMIN_LOCKOUT_MS / 1000}s.`
-            : `Incorrect PIN. ${MAX_ADMIN_ATTEMPTS - attempts} attempt${
-                MAX_ADMIN_ATTEMPTS - attempts === 1 ? '' : 's'
-              } remaining.`,
-        };
-      }
-
-      const reset: AdminAttemptState = { attempts: 0, lockedUntil: null };
-      setAttemptState(reset);
-      writeStorage(STORAGE_KEYS.adminAttempts, reset, 'session');
-      writeStorage(STORAGE_KEYS.adminSession, { unlockedAt: Date.now() }, 'session');
+  const unlockAdmin = useCallback(async (email: string, password: string) => {
+    setIsAdminAuthLoading(true);
+    try {
+      await signInAdmin(email.trim(), password);
       setIsAdminUnlocked(true);
+      setAdminEmail(email.trim());
+      const [liveOrders, allProducts] = await Promise.all([fetchLiveOrders(), fetchAdminProducts()]);
+      commitOrders(liveOrders);
+      commitProducts(allProducts);
+      const alerts = await fetchCloudStockAlerts(allProducts);
+      stockAlertsRef.current = alerts;
+      setStockAlerts(alerts);
+    } finally {
+      setIsAdminAuthLoading(false);
+    }
+  }, [commitOrders, commitProducts]);
 
-      return { success: true, message: 'Dashboard unlocked.' };
-    },
-    [attemptState.attempts, attemptState.lockedUntil]
-  );
-
-  const lockAdmin = useCallback(() => {
-    removeStorage(STORAGE_KEYS.adminSession, 'session');
+  const lockAdmin = useCallback(async () => {
+    await signOutAdmin();
     setIsAdminUnlocked(false);
-    showToast({ type: 'info', title: 'Admin session locked' });
-  }, [showToast]);
+    setAdminEmail(undefined);
+    commitOrders([]);
+    showToast({ type: 'info', title: 'Seller session signed out' });
+  }, [commitOrders, showToast]);
 
   /* ------------------------------------------------------------------ *
    * Bag operations
@@ -553,9 +571,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (changedVariants.length === 0) return;
       commitProducts(nextProducts);
-      changedVariants.forEach((variant) => void syncVariantStock(variant.id, variant.stockQuantity));
+      if (isAdminUnlocked && isSupabaseConfigured()) {
+        changedVariants.forEach((variant) => {
+          void syncVariantStock(variant.id, variant.stockQuantity).catch(() => {
+            showToast({ type: 'error', title: 'Inventory update failed', description: 'Refresh and try again.' });
+          });
+        });
+      }
     },
-    [commitProducts]
+    [commitProducts, isAdminUnlocked, showToast]
   );
 
   const setVariantStock = useCallback(
@@ -589,6 +613,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const product = next.find((candidate) => candidate.id === productId);
       if (product) {
+        if (isAdminUnlocked && isSupabaseConfigured()) {
+          void syncProductActive(product.id, product.isActive).catch(() => {
+            commitProducts(productsRef.current.map((candidate) =>
+              candidate.id === product.id ? { ...candidate, isActive: !product.isActive } : candidate
+            ));
+            showToast({ type: 'error', title: 'Publish change failed', description: 'The previous state was restored.' });
+          });
+        }
         showToast({
           type: 'info',
           title: product.isActive ? 'Product published' : 'Product hidden',
@@ -596,19 +628,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [commitProducts, showToast]
+    [commitProducts, isAdminUnlocked, showToast]
   );
 
   const addProduct = useCallback(
     (product: Product) => {
       commitProducts([product, ...productsRef.current]);
+      if (isAdminUnlocked && isSupabaseConfigured()) {
+        void persistProduct(product).catch(() => {
+          commitProducts(productsRef.current.filter((candidate) => candidate.id !== product.id));
+          showToast({ type: 'error', title: 'Product could not be saved', description: 'Check the SKU and try again.' });
+        });
+      }
       showToast({
         type: 'success',
         title: 'Product created',
         description: `${product.title} is now live in the catalog.`,
       });
     },
-    [commitProducts, showToast]
+    [commitProducts, isAdminUnlocked, showToast]
   );
 
   const resetDemoData = useCallback(() => {
@@ -631,8 +669,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
    * ------------------------------------------------------------------ */
 
   const createOrder = useCallback(
-    ({ customer, paymentMethod, promoCode, channel = 'website' }: CheckoutInput): Order => {
+    async ({ customer, paymentMethod, promoCode, channel = 'website' }: CheckoutInput): Promise<Order> => {
       const items = cartRef.current;
+      if (items.length === 0) throw new Error('Your bag is empty.');
+
+      if (isSupabaseConfigured() && channel === 'website') {
+        const order = await createCloudOrder({ customer, paymentMethod, items, promoCode });
+        commitOrders([order, ...ordersRef.current.filter((candidate) => candidate.id !== order.id)]);
+        clearCart();
+        const liveProducts = await fetchLiveProducts();
+        if (liveProducts.length) commitProducts(liveProducts);
+        return order;
+      }
+
       const subtotalBWP = getCartSubtotal(items);
       const deliveryFeeBWP = DELIVERY_OPTIONS_BY_ID[customer.deliveryPreference]?.feeBWP ?? 0;
       const now = Date.now();
@@ -686,11 +735,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       });
 
       clearCart();
-      void persistOrder(order);
-
       return order;
     },
-    [applyStockDelta, buildEvent, clearCart, commitOrders]
+    [applyStockDelta, buildEvent, clearCart, commitOrders, commitProducts]
   );
 
   const updateOrderStatus = useCallback(
@@ -721,7 +768,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (!updatedOrder) return;
 
       commitOrders(next);
-      void syncOrderStatus(updatedOrder);
+      if (isSupabaseConfigured()) {
+        void syncOrderStatus(updatedOrder).catch(() => {
+          showToast({ type: 'error', title: 'Order update failed', description: 'Refresh and try again.' });
+        });
+      }
 
       showToast({
         type: 'success',
@@ -759,7 +810,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (!updatedOrder) return;
 
       commitOrders(next);
-      void syncOrderStatus(updatedOrder);
+      if (isSupabaseConfigured()) {
+        if (isAdminUnlocked) {
+          void syncOrderStatus(updatedOrder).catch(() => {
+            showToast({ type: 'error', title: 'Reference could not be saved', description: 'Please try again.' });
+          });
+        } else {
+          const phoneTail = updatedOrder.customer.phone.replace(/\D/g, '').slice(-4);
+          void submitCloudPaymentReference(updatedOrder.orderNumber, phoneTail, reference.trim()).catch(() => {
+            showToast({ type: 'error', title: 'Reference could not be saved', description: 'Please try again.' });
+          });
+        }
+      }
 
       if (reference.trim()) {
         showToast({
@@ -769,7 +831,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [buildEvent, commitOrders, showToast]
+    [buildEvent, commitOrders, isAdminUnlocked, showToast]
   );
 
   /**
@@ -798,15 +860,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       };
 
       commitOrders(ordersRef.current.map((order) => (order.id === orderId ? cancelledOrder : order)));
-      void syncOrderStatus(cancelledOrder);
 
       // Return the reserved units to the shelf.
       const returnedUnits = target.items.reduce((sum, item) => sum + item.quantity, 0);
-      applyStockDelta((variant) => {
-        const line = target.items.find((item) => item.variantId === variant.id);
-        if (!line) return null;
-        return { ...variant, stockQuantity: variant.stockQuantity + line.quantity };
-      });
+      if (isSupabaseConfigured()) {
+        void syncOrderStatus(cancelledOrder)
+          .then(() => Promise.all([fetchLiveOrders(), fetchAdminProducts()]))
+          .then(([liveOrders, liveProducts]) => {
+            commitOrders(liveOrders);
+            commitProducts(liveProducts);
+          })
+          .catch(() => {
+            commitOrders(ordersRef.current.map((order) => (order.id === orderId ? target : order)));
+            showToast({ type: 'error', title: 'Cancellation failed', description: 'No stock was changed.' });
+          });
+      } else {
+        applyStockDelta((variant) => {
+          const line = target.items.find((item) => item.variantId === variant.id);
+          if (!line) return null;
+          return { ...variant, stockQuantity: variant.stockQuantity + line.quantity };
+        });
+      }
 
       showToast({
         type: 'info',
@@ -814,7 +888,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         description: `${returnedUnits} unit${returnedUnits === 1 ? '' : 's'} returned to stock.`,
       });
     },
-    [applyStockDelta, buildEvent, commitOrders, showToast]
+    [applyStockDelta, buildEvent, commitOrders, commitProducts, showToast]
   );
 
   /**
@@ -835,19 +909,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       };
 
       commitOrders(ordersRef.current.map((order) => (order.id === orderId ? reopened : order)));
-      void syncOrderStatus(reopened);
 
       const shortfalls: string[] = [];
-      applyStockDelta((variant) => {
-        const line = target.items.find((item) => item.variantId === variant.id);
-        if (!line) return null;
+      if (isSupabaseConfigured()) {
+        void syncOrderStatus(reopened)
+          .then(() => Promise.all([fetchLiveOrders(), fetchAdminProducts()]))
+          .then(([liveOrders, liveProducts]) => {
+            commitOrders(liveOrders);
+            commitProducts(liveProducts);
+          })
+          .catch((error) => {
+            commitOrders(ordersRef.current.map((order) => (order.id === orderId ? target : order)));
+            showToast({
+              type: 'error',
+              title: 'Order could not be reopened',
+              description: error instanceof Error ? error.message : 'Check inventory and try again.',
+            });
+          });
+      } else {
+        applyStockDelta((variant) => {
+          const line = target.items.find((item) => item.variantId === variant.id);
+          if (!line) return null;
 
-        if (variant.stockQuantity < line.quantity) {
-          shortfalls.push(`${variant.sku} (wanted ${line.quantity}, ${variant.stockQuantity} left)`);
-        }
+          if (variant.stockQuantity < line.quantity) {
+            shortfalls.push(`${variant.sku} (wanted ${line.quantity}, ${variant.stockQuantity} left)`);
+          }
 
-        return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - line.quantity) };
-      });
+          return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - line.quantity) };
+        });
+      }
 
       showToast({
         type: shortfalls.length > 0 ? 'info' : 'success',
@@ -858,7 +948,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             : 'Reserved stock taken off the shelf again.',
       });
     },
-    [applyStockDelta, buildEvent, commitOrders, showToast]
+    [applyStockDelta, buildEvent, commitOrders, commitProducts, showToast]
   );
 
   /** Free-text activity note ("called, no answer") appended to the order log. */
@@ -925,8 +1015,41 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
    * stock stays the single source of truth across every channel.
    */
   const recordOfflineSale = useCallback(
-    (input: OfflineSaleInput): Order => {
+    async (input: OfflineSaleInput): Promise<Order> => {
       const now = Date.now();
+
+      if (isSupabaseConfigured()) {
+        const customer: OrderCustomer = {
+          name: input.customerName.trim() || 'Walk-in customer',
+          phone: input.customerPhone.trim() || '+26700000000',
+          town: input.town.trim() || 'Francistown',
+          address: input.address.trim() || 'Recorded at the pickup point',
+          deliveryPreference: input.deliveryPreference,
+        };
+        const cloudOrder = await createCloudAdminOrder({
+          customer,
+          paymentMethod: input.paymentMethod,
+          channel: input.channel,
+          isFulfilled: input.isFulfilled,
+          note: input.note,
+          items: input.lines.map((line) => ({
+            product: line.product,
+            variantId: line.variant.id,
+            variantLabel: getVariantLabel(line.variant),
+            quantity: line.quantity,
+            unitPriceBWP: line.variant.priceBWP,
+          })),
+        });
+        const [liveOrders, liveProducts] = await Promise.all([fetchLiveOrders(), fetchAdminProducts()]);
+        commitOrders(liveOrders);
+        commitProducts(liveProducts);
+        showToast({
+          type: 'success',
+          title: `Sale recorded · ${cloudOrder.orderNumber}`,
+          description: `${cloudOrder.items.reduce((sum, item) => sum + item.quantity, 0)} units taken off stock.`,
+        });
+        return cloudOrder;
+      }
 
       const items = input.lines.map((line, index) => ({
         id: `item-${now}-${index}`,
@@ -981,8 +1104,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - line.quantity) };
       });
 
-      void persistOrder(order);
-
       showToast({
         type: 'success',
         title: `Sale recorded · ${order.orderNumber}`,
@@ -991,7 +1112,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       return order;
     },
-    [applyStockDelta, buildEvent, commitOrders, showToast]
+    [applyStockDelta, buildEvent, commitOrders, commitProducts, showToast]
   );
 
   /* ------------------------------------------------------------------ *
@@ -1019,18 +1140,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         : [{ ...promo }, ...promoCodesRef.current];
 
       commitPromoCodes(next);
+      if (isAdminUnlocked && isSupabaseConfigured()) {
+        void saveCloudPromo(promo).catch(() => {
+          showToast({ type: 'error', title: 'Promo could not be saved', description: 'Refresh and try again.' });
+        });
+      }
       showToast({ type: 'success', title: `Promo ${promo.code} saved` });
     },
-    [commitPromoCodes, showToast]
+    [commitPromoCodes, isAdminUnlocked, showToast]
   );
 
   const deletePromoCode = useCallback(
     (promoId: string) => {
       const promo = promoCodesRef.current.find((candidate) => candidate.id === promoId);
       commitPromoCodes(promoCodesRef.current.filter((candidate) => candidate.id !== promoId));
+      if (isAdminUnlocked && isSupabaseConfigured()) {
+        void deleteCloudPromo(promoId).catch(() => {
+          if (promo) commitPromoCodes([promo, ...promoCodesRef.current]);
+          showToast({ type: 'error', title: 'Promo could not be removed', description: 'The previous state was restored.' });
+        });
+      }
       showToast({ type: 'info', title: 'Promo removed', description: promo?.code });
     },
-    [commitPromoCodes, showToast]
+    [commitPromoCodes, isAdminUnlocked, showToast]
   );
 
   /** Adds a buyer review. Verified-buyer submissions arrive with an order number. */
@@ -1047,10 +1179,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setReviews(next);
       writeStorage(STORAGE_KEYS.reviews, next.filter((item) => !CUSTOMER_REVIEWS.some((seed) => seed.id === item.id)));
 
+      if (isSupabaseConfigured()) {
+        void submitCloudReview(review)
+          .then((saved) => {
+            const synced = reviewsRef.current.map((candidate) => candidate.id === entry.id ? saved : candidate);
+            reviewsRef.current = synced;
+            setReviews(synced);
+          })
+          .catch(() => {
+            const rolledBack = reviewsRef.current.filter((candidate) => candidate.id !== entry.id);
+            reviewsRef.current = rolledBack;
+            setReviews(rolledBack);
+            showToast({ type: 'error', title: 'Review could not be submitted', description: 'Please check the details and try again.' });
+          });
+      }
+
       showToast({
         type: 'success',
         title: 'Thank you for the review',
-        description: review.verified ? 'Published with a verified buyer badge.' : 'Published on the product page.',
+        description: review.verified
+          ? 'Published with a verified buyer badge.'
+          : isSupabaseConfigured()
+            ? 'Submitted for seller approval.'
+            : 'Published on the product page.',
       });
 
       return true;
@@ -1092,6 +1243,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setStockAlerts(next);
       writeStorage(STORAGE_KEYS.stockAlerts, next);
 
+      if (isSupabaseConfigured()) {
+        void subscribeCloudStockAlert(variant.id, normalised).catch(() => {
+          const rolledBack = stockAlertsRef.current.filter((candidate) => candidate.id !== alert.id);
+          stockAlertsRef.current = rolledBack;
+          setStockAlerts(rolledBack);
+          writeStorage(STORAGE_KEYS.stockAlerts, rolledBack);
+          showToast({ type: 'error', title: 'Alert signup failed', description: 'Please try again.' });
+        });
+      }
+
       showToast({
         type: 'success',
         title: 'We will WhatsApp you',
@@ -1104,20 +1265,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const markStockAlertNotified = useCallback((alertId: string) => {
+    const notifiedAt = new Date().toISOString();
     const next = stockAlertsRef.current.map((alert) =>
-      alert.id === alertId ? { ...alert, notifiedAt: new Date().toISOString() } : alert
+      alert.id === alertId ? { ...alert, notifiedAt } : alert
     );
     stockAlertsRef.current = next;
     setStockAlerts(next);
     writeStorage(STORAGE_KEYS.stockAlerts, next);
-  }, []);
+    if (isAdminUnlocked && isSupabaseConfigured()) {
+      void updateCloudStockAlert(alertId, notifiedAt).catch(() => {
+        showToast({ type: 'error', title: 'Alert status could not be saved' });
+      });
+    }
+  }, [isAdminUnlocked, showToast]);
 
   const removeStockAlert = useCallback((alertId: string) => {
     const next = stockAlertsRef.current.filter((alert) => alert.id !== alertId);
     stockAlertsRef.current = next;
     setStockAlerts(next);
     writeStorage(STORAGE_KEYS.stockAlerts, next);
-  }, []);
+    if (isAdminUnlocked && isSupabaseConfigured()) {
+      void deleteCloudStockAlert(alertId).catch(() => {
+        showToast({ type: 'error', title: 'Alert could not be removed' });
+      });
+    }
+  }, [isAdminUnlocked, showToast]);
 
   const toggleSaved = useCallback(
     (productId: string) => {
@@ -1324,8 +1496,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       importBackup,
 
       isAdminUnlocked,
-      adminAttemptsRemaining: Math.max(0, MAX_ADMIN_ATTEMPTS - attemptState.attempts),
-      adminLockSecondsRemaining: lockSecondsRemaining,
+      isAdminAuthLoading,
+      adminEmail,
       unlockAdmin,
       lockAdmin,
 
@@ -1397,8 +1569,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       resetDemoData,
       importBackup,
       isAdminUnlocked,
-      attemptState.attempts,
-      lockSecondsRemaining,
+      isAdminAuthLoading,
+      adminEmail,
       unlockAdmin,
       lockAdmin,
       activeProduct,

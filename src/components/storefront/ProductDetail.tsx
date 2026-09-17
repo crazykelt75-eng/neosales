@@ -119,7 +119,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
     if (claimed && !matchedOrder) {
       setReviewError(
-        'We could not match that order number to this product. Check the ORD- number on your receipt, or leave the field blank to post an unverified review.'
+        'We could not match that order number to this product. Check the NS- number on your receipt, or leave the field blank to submit an unverified review.'
       );
       return;
     }
@@ -143,7 +143,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     setStatusMessage(
       matchedOrder
         ? `Thank you — published with a verified purchase badge (${matchedOrder.orderNumber}).`
-        : 'Thank you — your review is published.'
+        : 'Thank you — your review was submitted for approval.'
     );
     window.setTimeout(() => setStatusMessage(''), 3000);
   };

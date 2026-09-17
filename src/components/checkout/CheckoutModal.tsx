@@ -29,7 +29,7 @@ import { buildOrderReceipt, buildOrderWhatsAppLink, isValidBotswanaPhone } from 
 const TITLE_ID = 'checkout-modal-title';
 
 type CheckoutStep = 'details' | 'payment' | 'success';
-type FieldErrors = Partial<Record<'name' | 'phone' | 'town' | 'address' | 'payment', string>>;
+type FieldErrors = Partial<Record<'name' | 'phone' | 'town' | 'address' | 'payment' | 'submit', string>>;
 
 interface CheckoutForm {
   name: string;
@@ -205,7 +205,7 @@ export function CheckoutModal() {
     if (validateDetails()) setStep('payment');
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (cart.length === 0) return;
 
     if (form.deliveryPreference !== 'francistown_pickup' && form.paymentMethod === 'cash_on_pickup') {
@@ -223,21 +223,26 @@ export function CheckoutModal() {
       deliveryPreference: form.deliveryPreference,
     };
 
-    const createdOrder = createOrder({
-      customer,
-      paymentMethod: form.paymentMethod,
-      promoCode: appliedPromo?.code,
-    });
-    setOrder(createdOrder);
-    setReferenceDraft('');
-    setStep('success');
-    setIsSubmitting(false);
-    removeStorage(STORAGE_KEYS.checkoutDraft, 'session');
-    setErrors({});
-
-    // 1-tap dispatch: opened straight from the user gesture so no popup blocker fires.
-    const whatsappLink = buildOrderWhatsAppLink(createdOrder);
-    window.open(whatsappLink, '_blank', 'noopener,noreferrer');
+    try {
+      const createdOrder = await createOrder({
+        customer,
+        paymentMethod: form.paymentMethod,
+        promoCode: appliedPromo?.code,
+      });
+      setOrder(createdOrder);
+      setReferenceDraft('');
+      setStep('success');
+      removeStorage(STORAGE_KEYS.checkoutDraft, 'session');
+      setErrors({});
+    } catch (error) {
+      setErrors({
+        submit: error instanceof Error
+          ? error.message
+          : 'We could not place the order. Your bag is still saved; please try again.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -365,7 +370,7 @@ export function CheckoutModal() {
                     Step 1 · Send your order
                   </h4>
                   <p className="mt-1.5 text-xs leading-relaxed text-neutral-400">
-                    WhatsApp should have opened with your receipt. If it did not, tap the button below.
+                    Your order is safely reserved. Tap below to send the receipt to us on WhatsApp.
                   </p>
                   <a
                     href={buildOrderWhatsAppLink(order)}
@@ -691,10 +696,16 @@ export function CheckoutModal() {
                         What happens next
                       </p>
                       <p className="mt-1.5 text-xs leading-relaxed text-neutral-300">
-                        We create your order reference, open WhatsApp with the full receipt, and verify your payment the
-                        moment your screenshot lands. Dispatch same day before 15:00.
+                        We securely reserve your stock and create your order reference. Then send the receipt and payment
+                        confirmation on WhatsApp. Orders confirmed before 15:00 can dispatch the same day.
                       </p>
                     </div>
+
+                    {errors.submit && (
+                      <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-2xs font-semibold text-red-200">
+                        {errors.submit}
+                      </p>
+                    )}
 
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Button
@@ -714,7 +725,7 @@ export function CheckoutModal() {
                         onClick={handlePlaceOrder}
                         leftIcon={<MessageCircle size={17} />}
                       >
-                        Place order &amp; send on WhatsApp
+                        Place order securely
                       </Button>
                     </div>
                   </>

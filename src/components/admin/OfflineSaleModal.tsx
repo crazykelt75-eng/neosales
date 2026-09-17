@@ -24,7 +24,7 @@ interface OfflineSaleModalProps {
   onClose: () => void;
 }
 
-type FieldErrors = Partial<Record<'customer' | 'town' | 'phone' | 'lines', string>>;
+type FieldErrors = Partial<Record<'customer' | 'town' | 'phone' | 'lines' | 'submit', string>>;
 
 /**
  * Logs a sale that closed on WhatsApp, in a DM or in person.
@@ -46,6 +46,7 @@ export function OfflineSaleModal({ isOpen, onClose }: OfflineSaleModalProps) {
   const [isFulfilled, setIsFulfilled] = useState(true);
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const sellableProducts = useMemo(
     () =>
@@ -116,7 +117,7 @@ export function OfflineSaleModal({ isOpen, onClose }: OfflineSaleModalProps) {
     );
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const nextErrors: FieldErrors = {};
 
     if (resolvedLines.length === 0) nextErrors.lines = 'Add at least one item to the sale.';
@@ -129,21 +130,30 @@ export function OfflineSaleModal({ isOpen, onClose }: OfflineSaleModalProps) {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    recordOfflineSale({
-      lines: resolvedLines,
-      customerName,
-      customerPhone: customerPhone.trim() ? `+267${customerPhone.replace(/\D/g, '')}` : '',
-      town,
-      address,
-      channel,
-      paymentMethod,
-      deliveryPreference,
-      isFulfilled,
-      note,
-    });
-
-    reset();
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await recordOfflineSale({
+        lines: resolvedLines,
+        customerName,
+        customerPhone: customerPhone.trim() ? `+267${customerPhone.replace(/\D/g, '')}` : '',
+        town,
+        address,
+        channel,
+        paymentMethod,
+        deliveryPreference,
+        isFulfilled,
+        note,
+      });
+      reset();
+      onClose();
+    } catch (error) {
+      setErrors((current) => ({
+        ...current,
+        submit: error instanceof Error ? error.message : 'The sale could not be recorded.',
+      }));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -466,12 +476,13 @@ export function OfflineSaleModal({ isOpen, onClose }: OfflineSaleModalProps) {
             </div>
           </dl>
 
+          {errors.submit && <p role="alert" className="mb-3 text-2xs font-semibold text-red-300">{errors.submit}</p>}
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="secondary" size="lg" onClick={onClose}>
+            <Button variant="secondary" size="lg" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button variant="primary" size="lg" fullWidth onClick={handleSubmit} leftIcon={<Store size={16} />}>
-              Record sale &amp; reduce stock
+            <Button variant="primary" size="lg" fullWidth onClick={handleSubmit} disabled={isSubmitting} leftIcon={<Store size={16} />}>
+              {isSubmitting ? 'Recording sale…' : 'Record sale & reduce stock'}
             </Button>
           </div>
         </footer>

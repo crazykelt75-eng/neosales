@@ -28,6 +28,32 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(supabaseUrl && supabasePublishableKey);
 }
 
+const PRODUCT_IMAGE_BUCKET = 'product-images';
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Uploads a seller-provided product image. Storage policies restrict writes to
+ * authenticated entries in public.admin_users; the public bucket only exposes
+ * the rendered catalogue image.
+ */
+export async function uploadProductImage(file: File, productId: string): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Choose an image file to upload.');
+  if (file.size > MAX_PRODUCT_IMAGE_BYTES) throw new Error('Image is too large. Keep it under 5 MB.');
+
+  const extension = file.type === 'image/png' ? 'png' : file.type === 'image/gif' ? 'gif' : 'webp';
+  const path = `products/${productId}/${crypto.randomUUID()}.${extension}`;
+  const client = requireSupabase();
+  const { error } = await client.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, {
+    cacheControl: '31536000',
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) throw new Error(`Image upload failed: ${error.message}`);
+
+  const { data } = client.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 function requireSupabase(): SupabaseClient {
   if (!supabase) throw new Error('Online ordering is temporarily unavailable. Please order through WhatsApp.');
   return supabase;

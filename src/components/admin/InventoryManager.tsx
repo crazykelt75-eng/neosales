@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Minus, Package, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, Minus, Package, Pencil, Plus, Search, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
-import { ProductCategory } from '@/types';
+import { Product, ProductCategory } from '@/types';
 import { Badge } from '@/components/ui/Badge';
+import { AddProductModal } from '@/components/admin/AddProductModal';
 import { formatBWP } from '@/lib/format';
 import { getOptimizedImageUrl } from '@/lib/imageUtils';
 import { getVariantLabel } from '@/lib/product';
@@ -18,6 +19,7 @@ export function InventoryManager() {
   const [query, setQuery] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<ProductCategory | 'all'>('all');
+  const [productToEdit, setProductToEdit] = useState<Product | null>(null);
 
   const visibleProducts = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -196,6 +198,15 @@ export function InventoryManager() {
                     </span>
                     {product.isActive ? 'Published' : 'Hidden'}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProductToEdit(product)}
+                    className="inline-flex min-h-[40px] flex-shrink-0 items-center gap-2 rounded-xl border border-white/12 bg-white/[0.05] px-3 text-2xs font-bold uppercase tracking-wide text-neutral-200 transition-colors hover:bg-white/[0.12] hover:text-white"
+                  >
+                    <Pencil size={13} aria-hidden="true" />
+                    Edit details
+                  </button>
                 </div>
 
                 {/* Variant stock rows */}
@@ -278,6 +289,12 @@ export function InventoryManager() {
           })}
         </ul>
       )}
+
+      <AddProductModal
+        isOpen={Boolean(productToEdit)}
+        product={productToEdit}
+        onClose={() => setProductToEdit(null)}
+      />
 
       <p className="flex items-center gap-2 text-2xs text-neutral-400">
         <Package size={13} aria-hidden="true" />

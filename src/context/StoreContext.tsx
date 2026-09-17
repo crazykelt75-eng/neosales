@@ -59,6 +59,7 @@ import {
   syncOrderStatus,
   syncProductActive,
   syncVariantStock,
+  updateCloudProductDetails,
   updateCloudStockAlert,
 } from '@/lib/supabaseClient';
 import { useToast } from '@/components/ui/Toast';
@@ -125,6 +126,7 @@ interface StoreContextValue {
 
   // Inventory / catalog management (admin)
   addProduct: (product: Product) => void;
+  updateProductDetails: (product: Product) => void;
   setVariantStock: (productId: string, variantId: string, stockQuantity: number) => void;
   adjustVariantStock: (productId: string, variantId: string, delta: number) => void;
   toggleProductActive: (productId: string) => void;
@@ -738,6 +740,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return order;
     },
     [applyStockDelta, buildEvent, clearCart, commitOrders, commitProducts]
+  );
+
+  const updateProductDetails = useCallback(
+    (product: Product) => {
+      const previous = productsRef.current.find((candidate) => candidate.id === product.id);
+      if (!previous) return;
+
+      commitProducts(productsRef.current.map((candidate) => (candidate.id === product.id ? product : candidate)));
+      if (isAdminUnlocked && isSupabaseConfigured()) {
+        void updateCloudProductDetails(product).catch(() => {
+          commitProducts(productsRef.current.map((candidate) => (candidate.id === product.id ? previous : candidate)));
+          showToast({ type: 'error', title: 'Product update failed', description: 'The previous details were restored.' });
+        });
+      }
+      showToast({ type: 'success', title: 'Product updated', description: `${product.title} is live in the catalog.` });
+    },
+    [commitProducts, isAdminUnlocked, showToast]
   );
 
   const updateOrderStatus = useCallback(
@@ -1489,6 +1508,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       markViewed,
 
       addProduct,
+      updateProductDetails,
       setVariantStock,
       adjustVariantStock,
       toggleProductActive,
@@ -1563,6 +1583,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       recentlyViewedIds,
       markViewed,
       addProduct,
+      updateProductDetails,
       setVariantStock,
       adjustVariantStock,
       toggleProductActive,

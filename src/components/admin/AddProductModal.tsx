@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
-import { AlertCircle, PackagePlus } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { AlertCircle, ClipboardPaste, ImagePlus, PackagePlus, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { Product, ProductCategory } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { CATEGORY_LABELS, LOW_STOCK_WARNING_CEILING } from '@/lib/constants';
 import { FALLBACK_PRODUCT_IMAGE, getOptimizedImageUrl } from '@/lib/imageUtils';
+import { uploadProductImage } from '@/lib/supabaseClient';
 
 const TITLE_ID = 'add-product-title';
 
@@ -58,6 +59,10 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
   const { addProduct } = useStore();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Errors>({});
+  const [pastedImage, setPastedImage] = useState<File | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isPerfume = form.category === 'perfumes';
 
@@ -75,7 +80,29 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
     if (errorKey) setErrors((current) => ({ ...current, [errorKey]: undefined }));
   };
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const setImageFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageError('Paste or choose an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setImageError('Keep images under 5 MB.');
+      return;
+    }
+    setPastedImage(file);
+    setImageError(null);
+    update('imageUrl', '');
+  };
+
+  const handleImagePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
+    if (!image) return;
+    event.preventDefault();
+    setImageFile(image);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     const nextErrors: Errors = {};
@@ -94,7 +121,13 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
     const productId = crypto.randomUUID();
     const volumeMl = isPerfume ? Number(form.optionLabel.replace(/[^\d]/g, '')) || undefined : undefined;
 
-    const product: Product = {
+    setIsUploadingImage(true);
+    try {
+      const imageUrl = pastedImage
+        ? await uploadProductImage(pastedImage, productId)
+        : getOptimizedImageUrl(form.imageUrl.trim() || FALLBACK_PRODUCT_IMAGE);
+
+      const product: Product = {
       id: productId,
       title: form.title.trim(),
       slug: slugify(form.title) || productId,
@@ -105,7 +138,7 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
       basePriceBWP: price,
       isActive: true,
       isNewArrival: true,
-      imageUrls: [getOptimizedImageUrl(form.imageUrl.trim() || FALLBACK_PRODUCT_IMAGE)],
+      imageUrls: [imageUrl],
       variants: [
         {
           id: crypto.randomUUID(),
@@ -122,12 +155,18 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
           lowStockThreshold: LOW_STOCK_WARNING_CEILING,
         },
       ],
-    };
+      };
 
-    addProduct(product);
-    setForm(EMPTY_FORM);
-    setErrors({});
-    onClose();
+      addProduct(product);
+      setForm(EMPTY_FORM);
+      setPastedImage(null);
+      setErrors({});
+      onClose();
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : 'Unable to upload the image.');
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
   return (
@@ -282,10 +321,41 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
             />
           </div>
 
-          <div>
-            <label htmlFor="product-image" className="mb-1.5 block text-xs font-semibold text-neutral-200">
-              Image URL (optional)
+          <div onPaste={handleImagePaste}>
+            <label className="mb-1.5 block text-xs font-semibold text-neutral-200">
+              Product image
             </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              onChange={(event) => setImageFile(event.target.files?.[0])}
+            />
+            <div
+              tabIndex={0}
+              role="button"
+              aria-label="Paste a product image here"
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') fileInputRef.current?.click();
+              }}
+              className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-orangeMoney/50 bg-orangeMoney/5 px-3.5 py-3 text-sm text-neutral-200 transition hover:border-orangeMoney hover:bg-orangeMoney/10 focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
+            >
+              <ClipboardPaste size={18} className="shrink-0 text-orangeMoney" aria-hidden="true" />
+              <span>
+                <span className="block font-semibold">Paste an image here</span>
+                <span className="block text-xs text-neutral-400">Use Ctrl+V, or click to choose a file (max 5 MB).</span>
+              </span>
+            </div>
+            {pastedImage && (
+              <div className="mt-2 flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                <span className="flex min-w-0 items-center gap-2"><ImagePlus size={14} aria-hidden="true" /> <span className="truncate">{pastedImage.name || 'Pasted image'} ready to upload</span></span>
+                <button type="button" onClick={() => setPastedImage(null)} className="rounded p-1 hover:bg-white/10" aria-label="Remove pasted image"><X size={14} /></button>
+              </div>
+            )}
+            {imageError && <p role="alert" className="mt-1.5 text-2xs font-semibold text-red-300">{imageError}</p>}
+            <p className="mb-1.5 mt-3 text-xs font-semibold text-neutral-300">Or use an existing image URL</p>
             <input
               id="product-image"
               value={form.imageUrl}
@@ -294,7 +364,7 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
               className="w-full rounded-xl border border-white/12 bg-black/30 px-3.5 py-3 text-sm text-white placeholder:text-neutral-400 focus:border-orangeMoney focus:outline-none focus:ring-2 focus:ring-orangeMoney/40"
             />
             <p className="mt-1.5 text-2xs text-neutral-400">
-              Leave blank to use the bundled catalog placeholder until photography is ready.
+              Pasted images are stored in your product library. Leave both blank to use the catalog placeholder.
             </p>
           </div>
         </div>
@@ -303,8 +373,8 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
           <Button variant="secondary" size="lg" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" size="lg" fullWidth leftIcon={<PackagePlus size={16} />}>
-            Publish product
+          <Button type="submit" variant="primary" size="lg" fullWidth disabled={isUploadingImage} leftIcon={<PackagePlus size={16} />}>
+            {isUploadingImage ? 'Uploading image…' : 'Publish product'}
           </Button>
         </footer>
       </form>

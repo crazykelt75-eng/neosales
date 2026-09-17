@@ -91,7 +91,7 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const productId = `prod-${Date.now()}`;
+    const productId = crypto.randomUUID();
     const volumeMl = isPerfume ? Number(form.optionLabel.replace(/[^\d]/g, '')) || undefined : undefined;
 
     const product: Product = {
@@ -108,7 +108,7 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
       imageUrls: [getOptimizedImageUrl(form.imageUrl.trim() || FALLBACK_PRODUCT_IMAGE)],
       variants: [
         {
-          id: `var-${Date.now()}`,
+          id: crypto.randomUUID(),
           productId,
           sku: `${slugify(form.title).slice(0, 10).toUpperCase() || 'ITEM'}-${(form.optionLabel || 'STD')
             .toUpperCase()

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { DELIVERY_OPTIONS_BY_ID, ORDER_STATUS_META, PAYMENT_OPTIONS_BY_ID, SELLER_CONFIG } from '@/lib/constants';
 import { formatBWP, formatDateTime } from '@/lib/format';
 import { buildStatusUpdateLink } from '@/lib/whatsapp';
+import { isSupabaseConfigured, trackCloudOrder } from '@/lib/supabaseClient';
 
 type TrackStep = {
   status: OrderStatus | 'placed';
@@ -91,10 +92,11 @@ export function OrderTracker() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<Order | null>(null);
   const [searched, setSearched] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
-  const referencePlaceholder = useMemo(() => 'ORD-8421', []);
+  const referencePlaceholder = useMemo(() => 'NS-A1B2C3D4E5', []);
 
-  const handleLookup = (event: React.FormEvent) => {
+  const handleLookup = async (event: React.FormEvent) => {
     event.preventDefault();
 
     const cleanedReference = reference.trim().toUpperCase().replace(/\s/g, '');
@@ -114,28 +116,35 @@ export function OrderTracker() {
       return;
     }
 
-    const match = orders.find((order) => {
-      const orderReference = order.orderNumber.toUpperCase();
-      const matchesReference =
-        orderReference === cleanedReference ||
-        orderReference.replace('ORD-', '') === cleanedReference.replace('ORD-', '');
-      const phoneDigits = order.customer.phone.replace(/\D/g, '');
+    setIsSearching(true);
+    try {
+      const match = isSupabaseConfigured()
+        ? await trackCloudOrder(cleanedReference, cleanedTail)
+        : orders.find((order) => {
+            const orderReference = order.orderNumber.toUpperCase();
+            const matchesReference =
+              orderReference === cleanedReference ||
+              orderReference.replace('ORD-', '') === cleanedReference.replace('ORD-', '');
+            return matchesReference && order.customer.phone.replace(/\D/g, '').endsWith(cleanedTail);
+          }) ?? null;
 
-      return matchesReference && phoneDigits.endsWith(cleanedTail);
-    });
-
-    setSearched(true);
-
-    if (!match) {
-      setError(
-        'We could not find an order with that number and phone. Check the order confirmation message, or message us on WhatsApp and we will look it up.'
-      );
+      setSearched(true);
+      if (!match) {
+        setError(
+          'We could not find an order with that number and phone. Check your confirmation message, or ask us on WhatsApp.'
+        );
+        setResult(null);
+        return;
+      }
+      setError('');
+      setResult(match);
+    } catch {
+      setSearched(true);
       setResult(null);
-      return;
+      setError('Order tracking is temporarily unavailable. Your order is safe—please try again or ask us on WhatsApp.');
+    } finally {
+      setIsSearching(false);
     }
-
-    setError('');
-    setResult(match);
   };
 
   return (
@@ -198,7 +207,7 @@ export function OrderTracker() {
         )}
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <Button type="submit" variant="primary" size="lg" fullWidth leftIcon={<Search size={16} />}>
+          <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isSearching} leftIcon={<Search size={16} />}>
             Find my order
           </Button>
           <a

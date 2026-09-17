@@ -6,29 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run",
+    "verify": "npm run lint && npm run type-check && npm run test && npm run build",
     "type-check": "tsc --noEmit",
     "deploy:pages": "npm run build && wrangler pages deploy out --project-name neosales",
     "preview": "node scripts/serve-export.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.6",
-    "canvas-confetti": "^1.9.3",
-    "lucide-react": "^0.453.0",
-    "next": "^14.2.15",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "@supabase/supabase-js": "^2.116.0",
+    "canvas-confetti": "^1.9.4",
+    "lucide-react": "^1.47.0",
+    "next": "^16.3.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
-    "@types/node": "^20.17.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/node": "^22.20.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.20",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.35",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.3",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
-    "typescript": "^5.6.3"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   }
 }

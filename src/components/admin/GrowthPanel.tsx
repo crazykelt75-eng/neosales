@@ -151,7 +151,7 @@ function PromoManager({
     }
 
     onSave({
-      id: `promo-${Date.now()}`,
+      id: crypto.randomUUID(),
       code: cleanCode,
       percentOff: Math.round(percentValue),
       minSubtotalBWP: Math.max(0, Number(minSubtotal) || 0),

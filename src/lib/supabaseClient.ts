@@ -467,6 +467,23 @@ export async function syncProductActive(productId: string, isActive: boolean): P
   if (error) throw error;
 }
 
+/** Updates the storefront-facing fields of an existing seller product. Stock is
+ * deliberately managed through the inventory controls, not this editor. */
+export async function updateCloudProductDetails(product: Product): Promise<void> {
+  const { error } = await requireSupabase()
+    .from('products')
+    .update({
+      title: product.title,
+      slug: product.slug,
+      category: product.category,
+      description: product.description,
+      base_price_bwp: product.basePriceBWP,
+      image_urls: product.imageUrls,
+    })
+    .eq('id', product.id);
+  if (error) throw error;
+}
+
 export async function persistProduct(product: Product): Promise<void> {
   const client = requireSupabase();
   const { error: productError } = await client.from('products').insert({

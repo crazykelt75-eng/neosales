@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { AlertCircle, ClipboardPaste, ImagePlus, PackagePlus, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertCircle, ClipboardPaste, ImagePlus, PackagePlus, Pencil, X } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { Product, ProductCategory } from '@/types';
 import { Modal } from '@/components/ui/Modal';
@@ -10,11 +10,13 @@ import { CATEGORY_LABELS, LOW_STOCK_WARNING_CEILING } from '@/lib/constants';
 import { FALLBACK_PRODUCT_IMAGE, getOptimizedImageUrl } from '@/lib/imageUtils';
 import { uploadProductImage } from '@/lib/supabaseClient';
 
-const TITLE_ID = 'add-product-title';
+const TITLE_ID = 'product-editor-title';
 
 interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When supplied, the same safe form becomes a catalogue-details editor. */
+  product?: Product | null;
 }
 
 interface FormState {
@@ -55,14 +57,38 @@ function slugify(value: string): string {
  * variant matrix can then be extended directly in Supabase once the product is
  * published. Validated inline, no placeholder states.
  */
-export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
-  const { addProduct } = useStore();
+export function AddProductModal({ isOpen, onClose, product: productToEdit }: AddProductModalProps) {
+  const { addProduct, updateProductDetails } = useStore();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Errors>({});
   const [pastedImage, setPastedImage] = useState<File | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isEditing = Boolean(productToEdit);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const variant = productToEdit?.variants[0];
+    setForm(
+      productToEdit
+        ? {
+            title: productToEdit.title,
+            category: productToEdit.category,
+            description: productToEdit.description,
+            basePrice: String(productToEdit.basePriceBWP),
+            optionLabel: productToEdit.category === 'perfumes' ? `${variant?.volumeMl ?? ''}ml` : variant?.size ?? '',
+            colour: variant?.color ?? '',
+            stock: String(variant?.stockQuantity ?? 0),
+            imageUrl: productToEdit.imageUrls[0] ?? '',
+          }
+        : EMPTY_FORM
+    );
+    setPastedImage(null);
+    setImageError(null);
+    setErrors({});
+  }, [isOpen, productToEdit]);
 
   const isPerfume = form.category === 'perfumes';
 
@@ -118,7 +144,7 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const productId = crypto.randomUUID();
+    const productId = productToEdit?.id ?? crypto.randomUUID();
     const volumeMl = isPerfume ? Number(form.optionLabel.replace(/[^\d]/g, '')) || undefined : undefined;
 
     setIsUploadingImage(true);
@@ -135,11 +161,12 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
       description:
         form.description.trim() ||
         `${CATEGORY_LABELS[form.category]} added from the seller dashboard.`,
-      basePriceBWP: price,
-      isActive: true,
-      isNewArrival: true,
+      basePriceBWP: productToEdit?.basePriceBWP ?? price,
+      isActive: productToEdit?.isActive ?? true,
+      isNewArrival: productToEdit?.isNewArrival ?? true,
+      featuredTag: productToEdit?.featuredTag,
       imageUrls: [imageUrl],
-      variants: [
+      variants: productToEdit?.variants ?? [
         {
           id: crypto.randomUUID(),
           productId,
@@ -157,7 +184,8 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
       ],
       };
 
-      addProduct(product);
+      if (isEditing) updateProductDetails(product);
+      else addProduct(product);
       setForm(EMPTY_FORM);
       setPastedImage(null);
       setErrors({});
@@ -174,11 +202,11 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
       <form onSubmit={handleSubmit} className="flex max-h-[88vh] flex-col">
         <header className="border-b border-white/10 bg-[#0a0c13]/90 px-5 py-4">
           <h2 id={TITLE_ID} className="flex items-center gap-2 pr-10 text-base font-extrabold text-white">
-            <PackagePlus size={18} className="text-orangeMoney" aria-hidden="true" />
-            Quick add product
+            {isEditing ? <Pencil size={18} className="text-orangeMoney" aria-hidden="true" /> : <PackagePlus size={18} className="text-orangeMoney" aria-hidden="true" />}
+            {isEditing ? 'Edit product details' : 'Quick add product'}
           </h2>
           <p className="mt-0.5 text-xs text-neutral-400">
-            Publishes immediately to the storefront with one opening variant.
+            {isEditing ? 'Update the customer-facing information and product image.' : 'Publishes immediately to the storefront with one opening variant.'}
           </p>
         </header>
 
@@ -235,10 +263,12 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
                 onChange={(event) => update('basePrice', event.target.value)}
                 aria-invalid={Boolean(errors.price)}
                 placeholder="280"
+                disabled={isEditing}
                 className={`w-full rounded-xl border bg-black/30 px-3.5 py-3 font-mono text-sm text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orangeMoney/40 ${
                   errors.price ? 'border-red-500/60' : 'border-white/12 focus:border-orangeMoney'
                 }`}
               />
+              {isEditing && <p className="mt-1.5 text-2xs text-neutral-400">Price and variants are managed from inventory to keep orders and stock accurate.</p>}
               {errors.price && (
                 <p role="alert" className="mt-1.5 flex items-center gap-1.5 text-2xs font-semibold text-red-300">
                   <AlertCircle size={12} aria-hidden="true" />
@@ -373,8 +403,8 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
           <Button variant="secondary" size="lg" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" size="lg" fullWidth disabled={isUploadingImage} leftIcon={<PackagePlus size={16} />}>
-            {isUploadingImage ? 'Uploading image…' : 'Publish product'}
+          <Button type="submit" variant="primary" size="lg" fullWidth disabled={isUploadingImage} leftIcon={isEditing ? <Pencil size={16} /> : <PackagePlus size={16} />}>
+            {isUploadingImage ? 'Uploading image…' : isEditing ? 'Save product changes' : 'Publish product'}
           </Button>
         </footer>
       </form>

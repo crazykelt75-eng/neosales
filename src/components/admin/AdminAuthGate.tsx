@@ -31,7 +31,7 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const captchaWidgetIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!turnstileSiteKey || !captchaContainerRef.current) return;
+    if (!turnstileSiteKey || isAdminAuthLoading || !captchaContainerRef.current) return;
 
     let cancelled = false;
     const getTurnstile = () => (window as Window & { turnstile?: TurnstileApi }).turnstile;
@@ -81,7 +81,7 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
       cancelled = true;
       script.removeEventListener('load', renderWidget);
     };
-  }, []);
+  }, [isAdminAuthLoading]);
 
   if (isAdminAuthLoading) {
     return (

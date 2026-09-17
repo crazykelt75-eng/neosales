@@ -1,11 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, Lock, Mail, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/context/StoreContext';
 import { Button } from '@/components/ui/Button';
 import { SELLER_CONFIG } from '@/lib/constants';
+
+type TurnstileApi = {
+  render: (container: HTMLElement, options: {
+    sitekey: string;
+    callback: (token: string) => void;
+    'expired-callback': () => void;
+    'error-callback': () => void;
+  }) => string;
+  reset: (widgetId?: string) => void;
+};
+
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 export function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const { isAdminUnlocked, isAdminAuthLoading, unlockAdmin } = useStore();
@@ -13,6 +25,63 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReady, setCaptchaReady] = useState(!turnstileSiteKey);
+  const captchaContainerRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!turnstileSiteKey || !captchaContainerRef.current) return;
+
+    let cancelled = false;
+    const getTurnstile = () => (window as Window & { turnstile?: TurnstileApi }).turnstile;
+    const renderWidget = () => {
+      const turnstile = getTurnstile();
+      const container = captchaContainerRef.current;
+      if (!turnstile || !container || cancelled || captchaWidgetIdRef.current) return;
+
+      captchaWidgetIdRef.current = turnstile.render(container, {
+        sitekey: turnstileSiteKey,
+        callback: (token) => {
+          setCaptchaToken(token);
+          setCaptchaReady(true);
+          setError('');
+        },
+        'expired-callback': () => setCaptchaToken(''),
+        'error-callback': () => {
+          setCaptchaToken('');
+          setError('The security check could not load. Please refresh and try again.');
+        },
+      });
+      setCaptchaReady(true);
+    };
+
+    if (getTurnstile()) {
+      renderWidget();
+      return () => { cancelled = true; };
+    }
+
+    const existingScript = document.getElementById('cloudflare-turnstile');
+    if (existingScript) {
+      existingScript.addEventListener('load', renderWidget);
+      return () => {
+        cancelled = true;
+        existingScript.removeEventListener('load', renderWidget);
+      };
+    }
+
+    const script = document.createElement('script');
+    script.id = 'cloudflare-turnstile';
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.addEventListener('load', renderWidget);
+    document.head.appendChild(script);
+    return () => {
+      cancelled = true;
+      script.removeEventListener('load', renderWidget);
+    };
+  }, []);
 
   if (isAdminAuthLoading) {
     return (
@@ -32,7 +101,7 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
     setError('');
     setIsSubmitting(true);
     try {
-      await unlockAdmin(email, password);
+      await unlockAdmin(email, password, captchaToken || undefined);
       setPassword('');
     } catch (authError) {
       setError(
@@ -40,6 +109,11 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
           ? authError.message
           : 'We could not sign you in. Check your details and try again.'
       );
+      const turnstile = (window as Window & { turnstile?: TurnstileApi }).turnstile;
+      if (captchaWidgetIdRef.current && turnstile) {
+        turnstile.reset(captchaWidgetIdRef.current);
+        setCaptchaToken('');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -59,6 +133,15 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
                 Secure access to {SELLER_CONFIG.storeName} orders, payments and inventory.
               </p>
             </div>
+
+            {turnstileSiteKey && (
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div ref={captchaContainerRef} aria-label="Security check" />
+                {!captchaReady && (
+                  <p className="mt-2 text-2xs font-medium text-neutral-400">Loading security check…</p>
+                )}
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -105,7 +188,7 @@ export function AdminAuthGate({ children }: { children: React.ReactNode }) {
               </p>
             )}
 
-            <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isSubmitting} leftIcon={<ShieldCheck size={16} />}>
+            <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isSubmitting} disabled={!captchaReady || Boolean(turnstileSiteKey && !captchaToken)} leftIcon={<ShieldCheck size={16} />}>
               Sign in securely
             </Button>
             <Link href="/reset-password" className="block text-center text-2xs font-semibold text-orangeMoney transition-colors hover:text-orangeMoney-light">

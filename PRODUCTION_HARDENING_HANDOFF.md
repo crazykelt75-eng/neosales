@@ -12,9 +12,9 @@
 
 ## Required before accepting orders
 
-- [ ] Authenticate the Supabase CLI and link project `hqnwxckuptagvsizanho`.
-- [ ] Run `npx supabase db push --dry-run`, review it, then run `npx supabase db push`.
-- [ ] Create or select the seller's Supabase Auth user and insert it into `public.admin_users`.
+- [x] Authenticate the Supabase CLI and link project `hqnwxckuptagvsizanho`.
+- [x] Synchronize existing migration history, dry-run, and apply the live compatibility and hardening migrations.
+- [x] Authorize the confirmed seller account `crazykelt75@gmail.com` in `public.admin_users`.
 - [ ] Run Supabase Security Advisor and Performance Advisor; resolve material findings.
 - [ ] Set all production `NEXT_PUBLIC_*` build variables in GitHub/Cloudflare and confirm the payment recipient details with the seller.
 - [ ] Deploy a preview and complete the acceptance test below.
@@ -34,6 +34,6 @@
 9. Test keyboard navigation and a narrow mobile viewport for catalog, bag, checkout, tracking, and admin.
 10. Confirm `/admin` rejects non-admin Supabase accounts and anonymous API calls cannot read orders.
 
-## Current external blocker
+## Current external blockers
 
-The workstation used for this hardening pass has no Supabase CLI access token. The migration has therefore not been applied to the live project, and no production deployment has been triggered. Those actions require the project owner's Supabase authentication and seller account choice.
+The database migration and seller authorization are live. Production deployment still requires verified GitHub/Cloudflare build variables, confirmation of the public payment recipient details, and a preview acceptance test. Supabase's leaked-password protection should also be enabled in Auth settings before launch.

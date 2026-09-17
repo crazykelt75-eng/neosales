@@ -44,7 +44,7 @@ Never expose a Supabase secret or service-role key through a `NEXT_PUBLIC_` vari
 
 ## Database setup
 
-The base schema is in `supabase/schema.sql`; production hardening is in `supabase/migrations/20260917075128_production_hardening.sql`.
+The base schema is in `supabase/schema.sql`; live-schema compatibility and production hardening are versioned in `supabase/migrations/`.
 
 For a new linked Supabase project:
 

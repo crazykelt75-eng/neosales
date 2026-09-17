@@ -7,6 +7,12 @@
 create extension if not exists pgcrypto;
 create schema if not exists private;
 
+-- Map legacy fulfilment states after the compatibility migration has committed
+-- the canonical `dispatched` enum value.
+update public.orders
+set status = 'dispatched'
+where status::text in ('ready_for_pickup', 'out_for_delivery');
+
 -- ---------------------------------------------------------------------------
 -- Seller authorization and operational data
 -- ---------------------------------------------------------------------------
@@ -260,8 +266,8 @@ begin
       raise exception using message = 'Each item quantity must be between 1 and 10', errcode = '22023';
     end if;
 
-    select pv, p
-      into v_variant, v_product
+    select pv.*
+      into v_variant
     from public.product_variants pv
     join public.products p on p.id = pv.product_id
     where pv.id = v_line.variant_id and p.is_active = true
@@ -270,6 +276,9 @@ begin
     if not found then
       raise exception using message = 'An item in your bag is no longer available', errcode = 'P0001';
     end if;
+    select p.* into v_product
+    from public.products p
+    where p.id = v_variant.product_id;
     if v_variant.stock_quantity < v_line.quantity then
       raise exception using message = format('%s only has %s left', v_product.title, v_variant.stock_quantity), errcode = 'P0001';
     end if;
@@ -336,11 +345,13 @@ begin
     group by x.variant_id
     order by x.variant_id
   loop
-    select pv, p
-      into v_variant, v_product
+    select pv.*
+      into v_variant
     from public.product_variants pv
-    join public.products p on p.id = pv.product_id
     where pv.id = v_line.variant_id;
+    select p.* into v_product
+    from public.products p
+    where p.id = v_variant.product_id;
 
     insert into public.order_items (
       order_id, product_id, variant_id, product_title_snapshot,

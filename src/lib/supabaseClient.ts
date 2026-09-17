@@ -480,9 +480,13 @@ export async function subscribeCloudStockAlert(variantId: string, phone: string)
   return Boolean(data);
 }
 
-export async function signInAdmin(email: string, password: string): Promise<void> {
+export async function signInAdmin(email: string, password: string, captchaToken?: string): Promise<void> {
   const client = requireSupabase();
-  const { error } = await client.auth.signInWithPassword({ email, password });
+  const { error } = await client.auth.signInWithPassword({
+    email,
+    password,
+    options: captchaToken ? { captchaToken } : undefined,
+  });
   if (error) throw error;
   if (!(await isCurrentUserAdmin())) {
     await client.auth.signOut();

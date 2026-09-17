@@ -159,7 +159,7 @@ interface StoreContextValue {
   isAdminUnlocked: boolean;
   isAdminAuthLoading: boolean;
   adminEmail?: string;
-  unlockAdmin: (email: string, password: string) => Promise<void>;
+  unlockAdmin: (email: string, password: string, captchaToken?: string) => Promise<void>;
   lockAdmin: () => Promise<void>;
 
   // UI state
@@ -392,10 +392,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [commitOrders, commitProducts]);
 
-  const unlockAdmin = useCallback(async (email: string, password: string) => {
+  const unlockAdmin = useCallback(async (email: string, password: string, captchaToken?: string) => {
     setIsAdminAuthLoading(true);
     try {
-      await signInAdmin(email.trim(), password);
+      await signInAdmin(email.trim(), password, captchaToken);
       setIsAdminUnlocked(true);
       setAdminEmail(email.trim());
       const [liveOrders, allProducts] = await Promise.all([fetchLiveOrders(), fetchAdminProducts()]);
